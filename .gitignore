@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Release builds (keep directory structure, ignore executables)
+releases/**/*.exe
+releases/**/*.dll
+releases/**/*.pyd
+app.exe
+*.spec

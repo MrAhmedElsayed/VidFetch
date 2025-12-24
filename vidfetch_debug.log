@@ -1,0 +1,10 @@
+2025-12-24 07:06:51,854 - __main__ - INFO - ============================================================
+2025-12-24 07:06:51,855 - __main__ - INFO - Starting VidFetch Test
+2025-12-24 07:06:51,855 - __main__ - INFO - ============================================================
+2025-12-24 07:06:52,380 - __main__ - INFO - Calling main()...
+2025-12-24 07:06:52,380 - src.vidfetch.app - INFO - Starting VidFetch v0.1.0
+2025-12-24 07:06:52,380 - src.vidfetch.app - INFO - Initializing application...
+2025-12-24 07:06:52,785 - src.vidfetch.app - INFO - Application initialized, starting main loop...
+2025-12-24 07:07:01,497 - root - INFO - Loading thumbnail from: https://i.ytimg.com/vi/SM491JGPNUs/maxresdefault.jpg
+2025-12-24 07:07:02,166 - root - INFO - Thumbnail loaded successfully: 400x225
+2025-12-24 07:07:27,661 - src.vidfetch.app - INFO - Application closed normally
