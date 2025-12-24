@@ -9,6 +9,7 @@ from typing import Optional
 from io import BytesIO
 import requests
 from PIL import Image, ImageTk
+from customtkinter import CTkImage
 
 from ..core import YouTubeClient, VideoMetadata, PlaylistMetadata, PlaylistEntry
 from ..utils import Config, resource_path
@@ -37,16 +38,20 @@ COLORS = {
 }
 
 
-def format_duration(seconds: int) -> str:
+def format_duration(seconds: float) -> str:
     """Format duration like YouTube (MM:SS or HH:MM:SS)."""
-    if seconds < 3600:
-        minutes = seconds // 60
-        secs = seconds % 60
+    if not seconds or seconds <= 0:
+        return "0:00"
+    
+    total_seconds = int(float(seconds))
+    if total_seconds < 3600:
+        minutes = total_seconds // 60
+        secs = total_seconds % 60
         return f"{minutes}:{secs:02d}"
     else:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        secs = total_seconds % 60
         return f"{hours}:{minutes:02d}:{secs:02d}"
 
 
@@ -463,10 +468,9 @@ class VidFetchApp(ctk.CTk):
 
     def setup_settings_modal(self):
         """Setup the settings modal."""
-        self.settings_modal = tk.Toplevel(self)
+        self.settings_modal = ctk.CTkToplevel(self)
         self.settings_modal.title("Settings")
         self.settings_modal.geometry("500x300")
-        self.settings_modal.configure()
         self.settings_modal.withdraw()  # Hide initially
         self.settings_modal.transient(self)
         # Don't call grab_set() on a withdrawn window - will do it when showing
@@ -475,52 +479,51 @@ class VidFetchApp(ctk.CTk):
         self.settings_modal.protocol("WM_DELETE_WINDOW", self.close_settings)
         
         # Header
-        header = tk.Frame(self.settings_modal, pady=24, padx=24)
-        header.pack(fill='x')
+        header = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
+        header.pack(fill='x', pady=24, padx=24)
         
-        title = tk.Label(
+        title = ctk.CTkLabel(
             header, text="Settings", font=("Segoe UI", 20, "bold")
         )
         title.pack(side='left')
         
-        close_btn = tk.Button(
-            header, text="✕", command=self.close_settings
+        close_btn = ctk.CTkButton(
+            header, text="✕", command=self.close_settings, width=30, height=30
         )
         close_btn.pack(side='right')
         
         # Content
-        content = tk.Frame(self.settings_modal, padx=24, pady=16)
-        content.pack(fill='both', expand=True)
+        content = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
+        content.pack(fill='both', expand=True, padx=24, pady=16)
         
         # Download path
-        path_frame = tk.Frame(content)
+        path_frame = ctk.CTkFrame(content, fg_color="transparent")
         path_frame.pack(fill='x', pady=(0, 16))
         
-        tk.Label(
+        ctk.CTkLabel(
             path_frame, text="Download Path", font=("Segoe UI", 11)
         ).pack(anchor='w', pady=(0, 8))
         
-        path_input_frame = tk.Frame(path_frame)
+        path_input_frame = ctk.CTkFrame(path_frame, fg_color="transparent")
         path_input_frame.pack(fill='x')
         
         self.path_var = tk.StringVar(value=str(self.config.download_path))
-        path_entry = tk.Entry(
+        path_entry = ctk.CTkEntry(
             path_input_frame, textvariable=self.path_var,
-            relief="flat", bd=1,
-            highlightthickness=1, font=("Segoe UI", 10)
+            font=("Segoe UI", 10)
         )
-        path_entry.pack(side='left', fill='x', expand=True, ipady=6, padx=(0, 8))
+        path_entry.pack(side='left', fill='x', expand=True, padx=(0, 8))
         
-        browse_btn = tk.Button(
+        browse_btn = ctk.CTkButton(
             path_input_frame, text="Change", command=self.browse_download_path
         )
         browse_btn.pack(side='left')
         
         # Footer
-        footer = tk.Frame(self.settings_modal, pady=16, padx=24)
-        footer.pack(fill='x', side='bottom')
+        footer = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
+        footer.pack(fill='x', side='bottom', pady=16, padx=24)
         
-        save_btn = tk.Button(
+        save_btn = ctk.CTkButton(
             footer, text="Save Changes", command=self.save_settings
         )
         save_btn.pack(side='right')
@@ -626,120 +629,117 @@ class VidFetchApp(ctk.CTk):
             self.results_view.destroy()
         
         # Container
-        self.results_view = tk.Frame(self.content_area, padx=16, pady=48)
-        container = tk.Frame(self.results_view)
+        self.results_view = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.results_view.pack(fill='both', expand=True, padx=16, pady=48)
+        container = ctk.CTkFrame(self.results_view, fg_color="transparent")
         container.pack(fill='both', expand=True)
         
         # Mini search bar
-        search_frame = tk.Frame(container)
+        search_frame = ctk.CTkFrame(container, fg_color="transparent")
         search_frame.pack(fill='x', pady=(0, 32))
         
         # Input container with icon - flex-1
-        input_container = tk.Frame(search_frame, relief="flat", bd=0)
-        input_container.config(highlightthickness=1)
+        input_container = ctk.CTkFrame(search_frame)
         input_container.pack(side='left', fill='x', expand=True, padx=(0, 12))
         
         # Link icon on left - absolute positioned in HTML
-        icon_label = tk.Label(
-            input_container, text="[LINK]", font=("Segoe UI", 10)
+        icon_label = ctk.CTkLabel(
+            input_container, text="🔗", font=("Segoe UI", 12)
         )
         icon_label.pack(side='left', padx=16)
         
-        search_entry = tk.Entry(
+        search_entry = ctk.CTkEntry(
             input_container,
-            relief="flat", bd=0,
-            font=("Segoe UI", 11), highlightthickness=0
+            font=("Segoe UI", 11)
         )
-        search_entry.pack(side='left', fill='x', expand=True, ipady=12)
+        search_entry.pack(side='left', fill='x', expand=True, padx=(0, 12), pady=8)
         search_entry.insert(0, meta.original_url)
         search_entry.bind('<Return>', lambda e: self._search_from_entry(search_entry.get()))
         
         # Search button - h-12 px-6 rounded-xl
-        search_btn = tk.Button(
+        search_btn = ctk.CTkButton(
             search_frame, text="Search", command=lambda: self._search_from_entry(search_entry.get())
         )
         search_btn.pack(side='left')
         
         # Results header
-        header_frame = tk.Frame(container)
+        header_frame = ctk.CTkFrame(container, fg_color="transparent")
         header_frame.pack(fill='x', pady=(0, 24))
         
         # Title - text-2xl font-bold tracking-tight
-        tk.Label(
+        ctk.CTkLabel(
             header_frame, text="Search Results", font=("Segoe UI", 24, "bold")
         ).pack(side='left')
         
         # Status indicator on right - flex items-center gap-4
-        status_frame = tk.Frame(header_frame)
+        status_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         status_frame.pack(side='right')
         
-        status_label = tk.Label(
+        status_label = ctk.CTkLabel(
             status_frame, text="✓ Ready to download", font=("Segoe UI", 11)
         )
         status_label.pack(side='left')
         
         # Main card - bg-white dark:bg-[#192633]/80 border border-gray-200 dark:border-[#233648] rounded-2xl
-        card = tk.Frame(container, relief="flat", bd=1)
-        card.config(highlightthickness=1)
+        card = ctk.CTkFrame(container)
         card.pack(fill='x')
         
         # Grid layout: lg:grid-cols-12, lg:col-span-5 for thumbnail, lg:col-span-7 for options
         # Thumbnail column - lg:col-span-5 bg-black/5 dark:bg-black/20 p-6
-        thumb_frame = tk.Frame(card, bg="#1a1a1a", width=400)  # black/20 equivalent
+        thumb_frame = ctk.CTkFrame(card, fg_color="#1a1a1a", width=400)  # black/20 equivalent
         thumb_frame.pack(side='left', fill='y', padx=24, pady=24)
         thumb_frame.pack_propagate(False)
         
         # Thumbnail container - rounded-xl overflow-hidden shadow-lg aspect-video
-        thumb_container = tk.Frame(thumb_frame, bg="black", relief="flat", bd=0)
+        thumb_container = ctk.CTkFrame(thumb_frame, fg_color="black")
         thumb_container.pack(expand=True, fill='both')
         
         # Thumbnail label - make sure it's visible and properly sized
-        self.result_thumb = tk.Label(
-            thumb_container, bg="black", 
+        self.result_thumb = ctk.CTkLabel(
+            thumb_container, fg_color="black", 
             anchor='center',
             text="Loading thumbnail...",
-            fg="white",
-            font=("Segoe UI", 10),
-            compound='center'
+            text_color="white",
+            font=("Segoe UI", 10)
         )
         self.result_thumb.pack(expand=True, fill='both')
         self.result_thumb.image = None  # Keep reference to prevent garbage collection
         
         # Info column - lg:col-span-7 p-6 md:p-8
-        info_frame = tk.Frame(card, padx=32, pady=24)
-        info_frame.pack(side='left', fill='both', expand=True)
+        info_frame = ctk.CTkFrame(card, fg_color="transparent")
+        info_frame.pack(side='left', fill='both', expand=True, padx=32, pady=24)
         
         # Title - text-xl md:text-2xl font-bold mb-2
-        title_label = tk.Label(
+        title_label = ctk.CTkLabel(
             info_frame, text=meta.title, font=("Segoe UI", 22, "bold"),
             wraplength=600, justify='left', anchor='w'
         )
         title_label.pack(anchor='w', pady=(0, 8))
         
         # Meta info - text-xs font-medium gap-4 mb-6
-        meta_frame = tk.Frame(info_frame)
+        meta_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
         meta_frame.pack(anchor='w', pady=(0, 24))
         
-        tk.Label(
+        ctk.CTkLabel(
             meta_frame, text=f"Duration: {format_duration(meta.duration)}", font=("Segoe UI", 10)
         ).pack(side='left')
         
-        tk.Label(
+        ctk.CTkLabel(
             meta_frame, text=" • ", font=("Segoe UI", 10)
         ).pack(side='left')
         
-        tk.Label(
+        ctk.CTkLabel(
             meta_frame, text="YouTube", font=("Segoe UI", 10)
         ).pack(side='left')
         
         # Quality options (scrollable) - fixed height so download button is visible
-        quality_frame = tk.Frame(info_frame, height=200)
+        quality_frame = ctk.CTkFrame(info_frame, height=200)
         quality_frame.pack(fill='x', pady=(0, 8))
         quality_frame.pack_propagate(False)
         
-        quality_canvas = tk.Canvas(quality_frame, highlightthickness=0, height=200)
+        quality_canvas = tk.Canvas(quality_frame, highlightthickness=0, height=200, bg=COLORS["card"])
         quality_scroll = ttk.Scrollbar(quality_frame, orient="vertical", command=quality_canvas.yview)
-        quality_inner = tk.Frame(quality_canvas)
+        quality_inner = tk.Frame(quality_canvas, bg=COLORS["card"])
         
         quality_inner.bind("<Configure>", lambda e: quality_canvas.configure(scrollregion=quality_canvas.bbox("all")))
         quality_canvas.create_window((0, 0), window=quality_inner, anchor="nw")
@@ -768,18 +768,17 @@ class VidFetchApp(ctk.CTk):
                 self.quality_map[label] = fmt
                 opts.append(label)
                 
-                # Radio button option
-                opt_frame = tk.Frame(quality_inner, relief="flat", bd=1, padx=12, pady=12)
-                opt_frame.config(highlightthickness=1)
+                # Radio button option - use tk.Frame for canvas compatibility
+                opt_frame = tk.Frame(quality_inner, bg=COLORS["card"], padx=12, pady=12)
                 opt_frame.pack(fill='x', pady=2)
                 
-                rb = tk.Radiobutton(
+                rb = ctk.CTkRadioButton(
                     opt_frame, text="", variable=self.quality_var, value=label
                 )
                 rb.pack(side='left', padx=(0, 12))
                 
                 # Quality info
-                quality_info_frame = tk.Frame(opt_frame)
+                quality_info_frame = ctk.CTkFrame(opt_frame, fg_color="transparent")
                 quality_info_frame.pack(side='left', fill='x', expand=True)
                 
                 # Extract resolution text - convert "854x480" to "480p" or use note if available
@@ -792,25 +791,25 @@ class VidFetchApp(ctk.CTk):
                     res_text = f"{res_text}p"
                 
                 # Quality row - font-bold text-sm with HD badge
-                quality_row = tk.Frame(quality_info_frame)
+                quality_row = ctk.CTkFrame(quality_info_frame, fg_color="transparent")
                 quality_row.pack(anchor='w')
                 
-                quality_label = tk.Label(
+                quality_label = ctk.CTkLabel(
                     quality_row, text=res_text, font=("Segoe UI", 11, "bold")
                 )
                 quality_label.pack(side='left')
                 
                 # Add HD badge for high quality - bg-primary/10 text-primary text-[10px]
                 if '1080' in res_text or '720' in res_text or '1080' in fmt.resolution or '720' in fmt.resolution:
-                    hd_badge = tk.Label(
+                    hd_badge = ctk.CTkLabel(
                         quality_row, text="HD",
-                        fg="white", font=("Segoe UI", 8, "bold"),
-                        padx=6, pady=2
+                        text_color="white", font=("Segoe UI", 8, "bold"),
+                        padx=6, pady=2, fg_color=COLORS["primary"]
                     )
                     hd_badge.pack(side='left', padx=(8, 0))
                 
                 # Format label - text-xs text-gray-500
-                format_label = tk.Label(
+                format_label = ctk.CTkLabel(
                     quality_info_frame, text=fmt.ext.upper(), font=("Segoe UI", 9)
                 )
                 format_label.pack(anchor='w', pady=(2, 0))
@@ -818,7 +817,7 @@ class VidFetchApp(ctk.CTk):
                 # Size label - text-sm font-medium on right
                 filesize_mb = (fmt.filesize / (1024*1024)) if fmt.filesize and fmt.filesize > 0 else 0.0
                 size_text = f"{filesize_mb:.1f} MB" if filesize_mb > 0 else "Unknown"
-                size_label = tk.Label(
+                size_label = ctk.CTkLabel(
                     opt_frame, text=size_text,
                     font=("Segoe UI", 11)
                 )
@@ -828,7 +827,7 @@ class VidFetchApp(ctk.CTk):
             self.quality_var.set(opts[0])
         
         # Download button
-        download_btn = tk.Button(
+        download_btn = ctk.CTkButton(
             info_frame, text="Download Video", command=self.add_single
         )
         download_btn.pack(fill='x', pady=8)
@@ -849,21 +848,22 @@ class VidFetchApp(ctk.CTk):
         if self.results_view:
             self.results_view.destroy()
         
-        self.results_view = tk.Frame(self.content_area, padx=24, pady=32)
+        self.results_view = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.results_view.pack(fill='both', expand=True, padx=24, pady=32)
         
-        header = tk.Label(
+        header = ctk.CTkLabel(
             self.results_view, text=f"{playlist.title} ({len(playlist.entries)} videos)",
- font=("Segoe UI", 20, "bold")
+            font=("Segoe UI", 20, "bold")
         )
         header.pack(anchor='w', pady=(0, 16))
         
         # Playlist items
-        list_frame = tk.Frame(self.results_view, padx=16, pady=16)
-        list_frame.pack(fill='both', expand=True)
+        list_frame = ctk.CTkFrame(self.results_view, fg_color="transparent")
+        list_frame.pack(fill='both', expand=True, padx=16, pady=16)
         
-        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        canvas = tk.Canvas(list_frame, highlightthickness=0, bg=COLORS["card"])
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
-        inner = tk.Frame(canvas)
+        inner = ctk.CTkFrame(canvas, fg_color="transparent")
         
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=inner, anchor="nw")
@@ -877,25 +877,24 @@ class VidFetchApp(ctk.CTk):
             var = tk.BooleanVar(value=True)
             self.pl_vars.append((entry, var))
             
-            row = tk.Frame(inner, pady=4)
+            row = tk.Frame(inner, bg=COLORS["card"], pady=4)
             row.pack(fill='x')
             
-            cb = tk.Checkbutton(
-                row, variable=var,
-                bd=0
+            cb = ctk.CTkCheckBox(
+                row, text="", variable=var
             )
             cb.pack(side='left', padx=8)
             
-            tk.Label(
+            ctk.CTkLabel(
                 row, text=f"{i+1}. {entry.title}", font=("Segoe UI", 11)
             ).pack(side='left', padx=8)
             
-            tk.Label(
+            ctk.CTkLabel(
                 row, text=format_duration(entry.duration), font=("Segoe UI", 10)
             ).pack(side='right', padx=8)
         
         # Download button
-        download_btn = tk.Button(
+        download_btn = ctk.CTkButton(
             self.results_view, text="Download Selected", command=self.process_playlist
         )
         download_btn.pack(pady=16)
@@ -917,16 +916,17 @@ class VidFetchApp(ctk.CTk):
             new_size = (int(img_width * ratio), int(img_height * ratio))
             pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
             
-            tk_img = ImageTk.PhotoImage(pil_img)
+            # Use CTkImage for CustomTkinter
+            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=new_size)
             
             # Update UI in main thread - CRITICAL: keep reference as instance variable
-            def update_thumb(img=tk_img):
+            def update_thumb(img=ctk_img):
                 try:
                     if hasattr(self, 'result_thumb') and self.result_thumb.winfo_exists():
-                        self.result_thumb.config(image=img, text="")
+                        self.result_thumb.configure(image=img, text="")
                         # Store reference as instance variable to prevent garbage collection
                         self.result_thumb.image = img
-                        logging.info(f"Thumbnail loaded successfully: {img.width()}x{img.height()}")
+                        logging.info(f"Thumbnail loaded successfully: {new_size[0]}x{new_size[1]}")
                 except Exception as e:
                     logging.error(f"Error updating thumbnail: {e}", exc_info=True)
             
@@ -935,11 +935,10 @@ class VidFetchApp(ctk.CTk):
             import logging
             logging.error(f"Error loading thumbnail: {e}", exc_info=True)
             # Show placeholder on error
-            self.after(0, lambda: self.result_thumb.config(
+            self.after(0, lambda: self.result_thumb.configure(
                 text="📹\nNo thumbnail", 
-                fg="white", 
-                font=("Segoe UI", 16),
-                compound='center'
+                text_color="white", 
+                font=("Segoe UI", 16)
             ))
 
     def add_single(self):

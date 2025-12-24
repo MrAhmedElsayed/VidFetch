@@ -2,19 +2,21 @@
 
 import threading
 import time
-import tkinter as tk
+import customtkinter as ctk
+import tkinter as tk  # Still needed for some widgets
 from tkinter import ttk
 from pathlib import Path
 from typing import Optional, Dict
 from io import BytesIO
 import requests
 from PIL import Image, ImageTk
+from customtkinter import CTkImage
 
 from ..core import SmartDownloader, MediaMuxer
-# Using standard Tkinter widgets only
+from .components import COLORS
 
 
-class DownloadItem(tk.Frame):
+class DownloadItem(ctk.CTkFrame):
     """Represents a single item in the download queue with Pause/Resume and Thumbnail."""
     
     def __init__(self, parent, title: str, video_url: Optional[str], audio_url: Optional[str], 
@@ -56,7 +58,6 @@ class DownloadItem(tk.Frame):
     def setup_ui(self):
         """Setup table-style UI matching web design."""
         # Table row layout: [Preview] [Title & Format] [Progress] [Stats] [Actions]
-        self.configure(relief="flat", bd=1)
         self.pack(fill='x', pady=0, padx=0)
         
         # Configure grid
@@ -64,21 +65,20 @@ class DownloadItem(tk.Frame):
         self.columnconfigure(2, weight=2)  # Progress column expands
         
         # 1. Preview (Thumbnail) - Column 0 - h-12 w-12 rounded-lg matching HTML
-        thumb_container = tk.Frame(self, padx=24, pady=16)
-        thumb_container.grid(row=0, column=0, sticky='n')
+        thumb_container = ctk.CTkFrame(self, fg_color="transparent")
+        thumb_container.grid(row=0, column=0, sticky='n', padx=24, pady=16)
         
         # Thumbnail - h-12 w-12 rounded-lg shadow-sm
-        self.lbl_thumb = tk.Label(
-            thumb_container, bg="black", width=12, height=12,
-            relief="flat", bd=0
+        self.lbl_thumb = ctk.CTkLabel(
+            thumb_container, text="", fg_color="black", width=48, height=48
         )
         self.lbl_thumb.pack()
         
         # 2. Title & Format - Column 1
-        title_frame = tk.Frame(self, padx=24, pady=16)
-        title_frame.grid(row=0, column=1, sticky='nw')
+        title_frame = ctk.CTkFrame(self, fg_color="transparent")
+        title_frame.grid(row=0, column=1, sticky='nw', padx=24, pady=16)
         
-        self.lbl_title = tk.Label(
+        self.lbl_title = ctk.CTkLabel(
             title_frame, text=self.title_text,
             font=("Segoe UI", 11), anchor='w',
             wraplength=300
@@ -86,7 +86,7 @@ class DownloadItem(tk.Frame):
         self.lbl_title.pack(anchor='w')
         
         # Format badges
-        format_frame = tk.Frame(title_frame)
+        format_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
         format_frame.pack(anchor='w', pady=(4, 0))
         
         # Determine format from URL/ext
@@ -95,72 +95,66 @@ class DownloadItem(tk.Frame):
             format_text = "MP3"
         
         # Format badges - matching HTML: text-[10px] font-medium bg-slate-100 dark:bg-slate-700
-        self.format_badge = tk.Label(
+        self.format_badge = ctk.CTkLabel(
             format_frame, text=format_text,
             font=("Segoe UI", 8),
-            padx=6, pady=2, relief="flat"
+            padx=6, pady=2
         )
         self.format_badge.pack(side='left', padx=(0, 4))
         
         # Quality badge (will be updated)
-        self.quality_badge = tk.Label(
+        self.quality_badge = ctk.CTkLabel(
             format_frame, text="1080p",
             font=("Segoe UI", 8),
-            padx=6, pady=2, relief="flat"
+            padx=6, pady=2
         )
         self.quality_badge.pack(side='left')
         
         # 3. Progress - Column 2
-        progress_frame = tk.Frame(self, padx=24, pady=16)
-        progress_frame.grid(row=0, column=2, sticky='ew')
+        progress_frame = ctk.CTkFrame(self, fg_color="transparent")
+        progress_frame.grid(row=0, column=2, sticky='ew', padx=24, pady=16)
         progress_frame.columnconfigure(0, weight=1)
         
         # Percentage label
-        self.progress_percent = tk.Label(
+        self.progress_percent = ctk.CTkLabel(
             progress_frame, text="0%",
             font=("Segoe UI", 11, "bold")
         )
         self.progress_percent.pack(anchor='w', pady=(0, 4))
         
         # Progress bar - h-2 rounded-full matching HTML
-        self.progress = ttk.Progressbar(
-            progress_frame, orient='horizontal', mode='determinate',
-            length=200
-        )
+        self.progress = ctk.CTkProgressBar(progress_frame)
+        self.progress.set(0)
         self.progress.pack(fill='x')
         
-        # Style progress bar to match HTML (h-2 rounded-full)
-        style = ttk.Style()
-        style.configure("Horizontal.TProgressbar", thickness=8)
-        
         # 4. Stats - Column 3
-        stats_frame = tk.Frame(self, padx=24, pady=16)
-        stats_frame.grid(row=0, column=3, sticky='n')
+        stats_frame = ctk.CTkFrame(self, fg_color="transparent")
+        stats_frame.grid(row=0, column=3, sticky='n', padx=24, pady=16)
         
-        self.speed_label = tk.Label(
+        self.speed_label = ctk.CTkLabel(
             stats_frame, text="0 MB/s",
             font=("Segoe UI", 11)
         )
         self.speed_label.pack(anchor='w')
         
-        self.time_label = tk.Label(
+        self.time_label = ctk.CTkLabel(
             stats_frame, text="Calculating...",
             font=("Segoe UI", 9)
         )
         self.time_label.pack(anchor='w', pady=(2, 0))
         
         # 5. Actions - Column 4
-        actions_frame = tk.Frame(self, padx=24, pady=16)
-        actions_frame.grid(row=0, column=4, sticky='ne')
+        actions_frame = ctk.CTkFrame(self, fg_color="transparent")
+        actions_frame.grid(row=0, column=4, sticky='ne', padx=24, pady=16)
         
         # Action buttons - matching HTML: p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10
-        self.btn_pause = tk.Button(
-            actions_frame, text="⏸", command=self.toggle_pause
+        self.btn_pause = ctk.CTkButton(
+            actions_frame, text="⏸", command=self.toggle_pause, width=30, height=30
         )
         self.btn_pause.pack(side='left', padx=2)
         
-        btn_cancel = tk.Button(
-            actions_frame, text="✕", command=self.cancel
+        btn_cancel = ctk.CTkButton(
+            actions_frame, text="✕", command=self.cancel, width=30, height=30
         )
         btn_cancel.pack(side='left', padx=2)
         
@@ -175,9 +169,9 @@ class DownloadItem(tk.Frame):
             resp = requests.get(self.thumb_url, timeout=10)
             pil_img = Image.open(BytesIO(resp.content))
             pil_img.thumbnail((48, 48))  # Smaller for table
-            tk_img = ImageTk.PhotoImage(pil_img)
-            self.after(0, lambda: self.lbl_thumb.config(image=tk_img, width=0, height=0))
-            self.lbl_thumb.image = tk_img
+            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=(48, 48))
+            self.after(0, lambda: self.lbl_thumb.configure(image=ctk_img, text=""))
+            self.lbl_thumb.image = ctk_img
         except Exception:
             pass
 
@@ -187,7 +181,7 @@ class DownloadItem(tk.Frame):
             return
         self.is_downloading = True
         self.is_paused = False
-        self.btn_pause.config(text="⏸")
+        self.btn_pause.configure(text="⏸")
         
         threading.Thread(target=self._run_download, daemon=True).start()
 
@@ -198,7 +192,7 @@ class DownloadItem(tk.Frame):
         else:
             self.is_paused = True
             self.is_downloading = False
-            self.btn_pause.config(text="▶")
+            self.btn_pause.configure(text="▶")
             if self.dl_instance:
                 self.dl_instance.stop()
                 
@@ -259,14 +253,12 @@ class DownloadItem(tk.Frame):
                 if not audio_complete:
                     raise RuntimeError("Audio file download failed or is incomplete")
                 
-                self.after(0, lambda: self.progress.configure(mode='indeterminate'))
-                self.after(0, lambda: self.progress_percent.config(text="Processing..."))
-                self.after(0, self.progress.start)
+                self.after(0, lambda: self.progress_percent.configure(text="Processing..."))
+                self.after(0, lambda: self.progress.set(0.5))  # Show 50% during muxing
                 
                 MediaMuxer.merge(self.v_path, self.a_path, self.output_path)
                 
-                self.after(0, self.progress.stop)
-                self.after(0, lambda: self.progress.configure(mode='determinate', value=100))
+                self.after(0, lambda: self.progress.set(1.0))
                 
                 if self.v_path.exists():
                     self.v_path.unlink()
@@ -287,20 +279,20 @@ class DownloadItem(tk.Frame):
                 else:
                     raise RuntimeError("Audio file download failed or is incomplete")
 
-            self.after(0, lambda: self.progress_percent.config(text="Completed"))
-            self.after(0, lambda: self.progress.configure(value=100))
-            self.btn_pause.config(state='disabled')
+            self.after(0, lambda: self.progress_percent.configure(text="Completed"))
+            self.after(0, lambda: self.progress.set(1.0))
+            self.btn_pause.configure(state='disabled')
             
         except Exception as e:
             if not self.is_paused:
                 import logging
                 logging.error(f"Download error for {self.title_text}: {e}", exc_info=True)
                 error_msg = str(e)[:50]  # Truncate long errors
-                self.after(0, lambda msg=error_msg: self.progress_percent.config(
-                    text=f"Error: {msg}", foreground="red"
+                self.after(0, lambda msg=error_msg: self.progress_percent.configure(
+                    text=f"Error: {msg}", text_color="red"
                 ))
-                self.after(0, lambda: self.speed_label.config(text="Failed", foreground="red"))
-                self.after(0, lambda: self.time_label.config(text=""))
+                self.after(0, lambda: self.speed_label.configure(text="Failed", text_color="red"))
+                self.after(0, lambda: self.time_label.configure(text=""))
 
     def _update_ui(self, percent: float, text_prefix: str, current_bytes: int = 0, total_bytes: int = 0):
         """Update UI with progress."""
@@ -311,14 +303,14 @@ class DownloadItem(tk.Frame):
         self.total_bytes = total_bytes
         
         # Update progress bar and percentage
-        self.after(0, lambda: self.progress.configure(value=percent))
-        self.after(0, lambda: self.progress_percent.config(text=f"{percent:.0f}%"))
+        self.after(0, lambda p=percent: self.progress.set(p / 100.0))
+        self.after(0, lambda p=percent: self.progress_percent.configure(text=f"{p:.0f}%"))
         
         # Calculate speed and ETA
         elapsed = time.time() - (self.start_time or time.time())
         if elapsed > 0 and current_bytes > 0:
             speed_mbps = (current_bytes / (1024 * 1024)) / elapsed
-            self.after(0, lambda s=speed_mbps: self.speed_label.config(text=f"{s:.1f} MB/s"))
+            self.after(0, lambda s=speed_mbps: self.speed_label.configure(text=f"{s:.1f} MB/s"))
             
             if total_bytes > 0 and speed_mbps > 0:
                 remaining_bytes = total_bytes - current_bytes
@@ -332,5 +324,5 @@ class DownloadItem(tk.Frame):
                 else:
                     eta_text = f"{int(eta_seconds / 3600)}h remaining"
                 
-                self.after(0, lambda t=eta_text: self.time_label.config(text=t))
+                self.after(0, lambda t=eta_text: self.time_label.configure(text=t))
 
