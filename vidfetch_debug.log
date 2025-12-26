@@ -1,71 +1,88 @@
-2025-12-24 07:28:16,847 - __main__ - INFO - ============================================================
-2025-12-24 07:28:16,847 - __main__ - INFO - Starting VidFetch Test
-2025-12-24 07:28:16,847 - __main__ - INFO - ============================================================
-2025-12-24 07:28:17,318 - __main__ - INFO - Calling main()...
-2025-12-24 07:28:17,318 - src.vidfetch.app - INFO - Starting VidFetch v0.1.0
-2025-12-24 07:28:17,318 - src.vidfetch.app - INFO - Initializing application...
-2025-12-24 07:28:17,771 - src.vidfetch.app - INFO - Application initialized, starting main loop...
-2025-12-24 07:28:38,765 - root - INFO - Loading thumbnail from: https://i.ytimg.com/vi_webp/gB-7uM03Uso/maxresdefault.webp
-2025-12-24 07:28:39,454 - PIL.Image - DEBUG - Importing AvifImagePlugin
-2025-12-24 07:28:39,457 - PIL.Image - DEBUG - Importing BlpImagePlugin
-2025-12-24 07:28:39,459 - PIL.Image - DEBUG - Importing BmpImagePlugin
-2025-12-24 07:28:39,459 - PIL.Image - DEBUG - Importing BufrStubImagePlugin
-2025-12-24 07:28:39,460 - PIL.Image - DEBUG - Importing CurImagePlugin
-2025-12-24 07:28:39,460 - PIL.Image - DEBUG - Importing DcxImagePlugin
-2025-12-24 07:28:39,462 - PIL.Image - DEBUG - Importing DdsImagePlugin
-2025-12-24 07:28:39,466 - PIL.Image - DEBUG - Importing EpsImagePlugin
-2025-12-24 07:28:39,470 - PIL.Image - DEBUG - Importing FitsImagePlugin
-2025-12-24 07:28:39,471 - PIL.Image - DEBUG - Importing FliImagePlugin
-2025-12-24 07:28:39,473 - PIL.Image - DEBUG - Importing FpxImagePlugin
-2025-12-24 07:28:39,473 - PIL.Image - DEBUG - Image: failed to import FpxImagePlugin: No module named 'olefile'
-2025-12-24 07:28:39,473 - PIL.Image - DEBUG - Importing FtexImagePlugin
-2025-12-24 07:28:39,475 - PIL.Image - DEBUG - Importing GbrImagePlugin
-2025-12-24 07:28:39,475 - PIL.Image - DEBUG - Importing GifImagePlugin
-2025-12-24 07:28:39,475 - PIL.Image - DEBUG - Importing GribStubImagePlugin
-2025-12-24 07:28:39,476 - PIL.Image - DEBUG - Importing Hdf5StubImagePlugin
-2025-12-24 07:28:39,476 - PIL.Image - DEBUG - Importing IcnsImagePlugin
-2025-12-24 07:28:39,479 - PIL.Image - DEBUG - Importing IcoImagePlugin
-2025-12-24 07:28:39,481 - PIL.Image - DEBUG - Importing ImImagePlugin
-2025-12-24 07:28:39,482 - PIL.Image - DEBUG - Importing ImtImagePlugin
-2025-12-24 07:28:39,483 - PIL.Image - DEBUG - Importing IptcImagePlugin
-2025-12-24 07:28:39,483 - PIL.Image - DEBUG - Importing JpegImagePlugin
-2025-12-24 07:28:39,483 - PIL.Image - DEBUG - Importing Jpeg2KImagePlugin
-2025-12-24 07:28:39,483 - PIL.Image - DEBUG - Importing McIdasImagePlugin
-2025-12-24 07:28:39,484 - PIL.Image - DEBUG - Importing MicImagePlugin
-2025-12-24 07:28:39,486 - PIL.Image - DEBUG - Image: failed to import MicImagePlugin: No module named 'olefile'
-2025-12-24 07:28:39,486 - PIL.Image - DEBUG - Importing MpegImagePlugin
-2025-12-24 07:28:39,491 - PIL.Image - DEBUG - Importing MpoImagePlugin
-2025-12-24 07:28:39,498 - PIL.Image - DEBUG - Importing MspImagePlugin
-2025-12-24 07:28:39,501 - PIL.Image - DEBUG - Importing PalmImagePlugin
-2025-12-24 07:28:39,502 - PIL.Image - DEBUG - Importing PcdImagePlugin
-2025-12-24 07:28:39,502 - PIL.Image - DEBUG - Importing PcxImagePlugin
-2025-12-24 07:28:39,502 - PIL.Image - DEBUG - Importing PdfImagePlugin
-2025-12-24 07:28:39,510 - PIL.Image - DEBUG - Importing PixarImagePlugin
-2025-12-24 07:28:39,513 - PIL.Image - DEBUG - Importing PngImagePlugin
-2025-12-24 07:28:39,513 - PIL.Image - DEBUG - Importing PpmImagePlugin
-2025-12-24 07:28:39,513 - PIL.Image - DEBUG - Importing PsdImagePlugin
-2025-12-24 07:28:39,514 - PIL.Image - DEBUG - Importing QoiImagePlugin
-2025-12-24 07:28:39,515 - PIL.Image - DEBUG - Importing SgiImagePlugin
-2025-12-24 07:28:39,516 - PIL.Image - DEBUG - Importing SpiderImagePlugin
-2025-12-24 07:28:39,517 - PIL.Image - DEBUG - Importing SunImagePlugin
-2025-12-24 07:28:39,518 - PIL.Image - DEBUG - Importing TgaImagePlugin
-2025-12-24 07:28:39,519 - PIL.Image - DEBUG - Importing TiffImagePlugin
-2025-12-24 07:28:39,519 - PIL.Image - DEBUG - Importing WebPImagePlugin
-2025-12-24 07:28:39,523 - PIL.Image - DEBUG - Importing WmfImagePlugin
-2025-12-24 07:28:39,526 - PIL.Image - DEBUG - Importing XbmImagePlugin
-2025-12-24 07:28:39,527 - PIL.Image - DEBUG - Importing XpmImagePlugin
-2025-12-24 07:28:39,529 - PIL.Image - DEBUG - Importing XVThumbImagePlugin
-2025-12-24 07:28:39,590 - root - INFO - Thumbnail loaded successfully: 400x225
-2025-12-24 07:29:39,695 - root - ERROR - Video download failed: Download incomplete: Expected 14523362, got 983040
+2025-12-26 05:27:04,673 - __main__ - INFO - ============================================================
+2025-12-26 05:27:04,673 - __main__ - INFO - Starting VidFetch Test
+2025-12-26 05:27:04,673 - __main__ - INFO - ============================================================
+2025-12-26 05:27:04,790 - __main__ - INFO - Calling main()...
+2025-12-26 05:27:04,790 - src.vidfetch.app - INFO - Starting VidFetch v0.1.0
+2025-12-26 05:27:04,790 - src.vidfetch.app - INFO - Initializing application...
+2025-12-26 05:27:04,960 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:04,960 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 4096
+2025-12-26 05:27:05,015 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 116041 6
+2025-12-26 05:27:05,022 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,022 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1206
+2025-12-26 05:27:05,023 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,023 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1221
+2025-12-26 05:27:05,023 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1274 6
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 454
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 451
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 504 6
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,024 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1046
+2025-12-26 05:27:05,025 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,025 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1064
+2025-12-26 05:27:05,025 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1117 6
+2025-12-26 05:27:05,025 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,026 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1341
+2025-12-26 05:27:05,026 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,026 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 586
+2025-12-26 05:27:05,026 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 639 6
+2025-12-26 05:27:05,038 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,038 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 680
+2025-12-26 05:27:05,039 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,039 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 683
+2025-12-26 05:27:05,039 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 736 6
+2025-12-26 05:27:05,040 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,040 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 415
+2025-12-26 05:27:05,040 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,040 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 416
+2025-12-26 05:27:05,040 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 469 6
+2025-12-26 05:27:05,041 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,041 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 554
+2025-12-26 05:27:05,041 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,041 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 570
+2025-12-26 05:27:05,041 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,042 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 822
+2025-12-26 05:27:05,042 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,042 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 831
+2025-12-26 05:27:05,042 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 884 6
+2025-12-26 05:27:05,043 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,043 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1146
+2025-12-26 05:27:05,043 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,043 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1152
+2025-12-26 05:27:05,043 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1205 6
+2025-12-26 05:27:05,045 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,045 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1046
+2025-12-26 05:27:05,045 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:05,046 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1064
+2025-12-26 05:27:05,046 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1117 6
+2025-12-26 05:27:05,048 - src.vidfetch.app - INFO - Application initialized, starting main loop...
+2025-12-26 05:27:30,615 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:30,615 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1134
+2025-12-26 05:27:30,615 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:30,615 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1146
+2025-12-26 05:27:30,616 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1199 6
+2025-12-26 05:27:30,629 - root - INFO - Loading thumbnail from: https://i.ytimg.com/vi/8T2nZZl3GQI/maxresdefault.jpg
+2025-12-26 05:27:31,265 - root - INFO - Thumbnail loaded successfully: 320x180
+2025-12-26 05:27:35,728 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:35,728 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1038
+2025-12-26 05:27:35,728 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:35,728 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 1036
+2025-12-26 05:27:35,730 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 1089 6
+2025-12-26 05:27:35,731 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:35,731 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 554
+2025-12-26 05:27:35,731 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2025-12-26 05:27:35,731 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 570
+2025-12-26 05:27:35,733 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 623 6
+2025-12-26 05:28:43,377 - root - ERROR - Video download failed: Download incomplete: Expected 7971941, got 458752
 Traceback (most recent call last):
-  File "C:\Users\ahmed\Developer\Current\VidFetch\src\vidfetch\ui\download_item.py", line 221, in _run_download
-    self.dl_instance.start()  # This is blocking, waits for completion
-    ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ahmed\Developer\Current\VidFetch\src\vidfetch\core\downloader.py", line 59, in start
+  File "/Users/ahmedelsayed/Desktop/two-apps/VidFetch/src/vidfetch/ui/download_item.py", line 129, in _run_download
+    self.dl_instance.start()
+  File "/Users/ahmedelsayed/Desktop/two-apps/VidFetch/src/vidfetch/core/downloader.py", line 59, in start
     self._download_single_thread()
-  File "C:\Users\ahmed\Developer\Current\VidFetch\src\vidfetch\core\downloader.py", line 187, in _download_single_thread
+  File "/Users/ahmedelsayed/Desktop/two-apps/VidFetch/src/vidfetch/core/downloader.py", line 187, in _download_single_thread
     raise e
-  File "C:\Users\ahmed\Developer\Current\VidFetch\src\vidfetch\core\downloader.py", line 185, in _download_single_thread
+  File "/Users/ahmedelsayed/Desktop/two-apps/VidFetch/src/vidfetch/core/downloader.py", line 185, in _download_single_thread
     raise ValueError(f"Download incomplete: Expected {self._total_bytes}, got {actual_size}")
-ValueError: Download incomplete: Expected 14523362, got 983040
-2025-12-24 07:29:41,953 - src.vidfetch.app - INFO - Application closed normally
+ValueError: Download incomplete: Expected 7971941, got 458752
+2025-12-26 05:28:50,946 - src.vidfetch.app - INFO - Application closed normally

@@ -16,13 +16,10 @@ from ..core import SmartDownloader, MediaMuxer
 from .components import COLORS
 
 
-class DownloadItem(ctk.CTkFrame):
-    """Represents a single item in the download queue with Pause/Resume and Thumbnail."""
-    
-    def __init__(self, parent, title: str, video_url: Optional[str], audio_url: Optional[str], 
+class DownloadTask:
+    """Handles the download logic and state (Model)."""
+    def __init__(self, title: str, video_url: Optional[str], audio_url: Optional[str], 
                  output_path: Path, thumb_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None):
-        super().__init__(parent)
-        
         # Props
         self.title_text = title
         self.output_path = output_path
@@ -31,17 +28,15 @@ class DownloadItem(ctk.CTkFrame):
         self.thumb_url = thumb_url
         self.headers = headers or {}
         
-        # Use proper extensions for temp files based on output format
-        # Match the output extension for video, use appropriate audio extension
+        # Derivatives
         output_ext = output_path.suffix.lower()
         if output_ext == '.webm':
             video_ext = '.webm'
             audio_ext = '.webm'
         else:
-            video_ext = '.mp4'  # Default to mp4
-            audio_ext = '.m4a'  # Use m4a for mp4 audio
-        
-        # Create temp file names with proper extensions
+            video_ext = '.mp4'
+            audio_ext = '.m4a'
+            
         temp_base = output_path.stem
         self.v_path = output_path.parent / f"temp_video_{temp_base}{video_ext}"
         self.a_path = output_path.parent / f"temp_audio_{temp_base}{audio_ext}"
@@ -49,131 +44,21 @@ class DownloadItem(ctk.CTkFrame):
         # State
         self.is_paused = False
         self.is_downloading = False
-        self.dl_instance = None 
+        self.is_cancelled = False
+        self.error_msg = None
+        self.progress = 0.0
+        self.status_text = "Waiting..."
+        self.speed_text = ""
+        self.time_text = ""
         
-        self.setup_ui()
-        if self.thumb_url:
-            threading.Thread(target=self._load_thumb, daemon=True).start()
-        
-    def setup_ui(self):
-        """Setup table-style UI matching web design."""
-        # Table row layout: [Preview] [Title & Format] [Progress] [Stats] [Actions]
-        self.pack(fill='x', pady=0, padx=0)
-        
-        # Configure grid
-        self.columnconfigure(1, weight=1)  # Title column expands
-        self.columnconfigure(2, weight=2)  # Progress column expands
-        
-        # 1. Preview (Thumbnail) - Column 0 - h-12 w-12 rounded-lg matching HTML
-        thumb_container = ctk.CTkFrame(self, fg_color="transparent")
-        thumb_container.grid(row=0, column=0, sticky='n', padx=24, pady=16)
-        
-        # Thumbnail - h-12 w-12 rounded-lg shadow-sm
-        self.lbl_thumb = ctk.CTkLabel(
-            thumb_container, text="", fg_color="black", width=48, height=48
-        )
-        self.lbl_thumb.pack()
-        
-        # 2. Title & Format - Column 1
-        title_frame = ctk.CTkFrame(self, fg_color="transparent")
-        title_frame.grid(row=0, column=1, sticky='nw', padx=24, pady=16)
-        
-        self.lbl_title = ctk.CTkLabel(
-            title_frame, text=self.title_text,
-            font=("Segoe UI", 11), anchor='w',
-            wraplength=300
-        )
-        self.lbl_title.pack(anchor='w')
-        
-        # Format badges
-        format_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
-        format_frame.pack(anchor='w', pady=(4, 0))
-        
-        # Determine format from URL/ext
-        format_text = "MP4"
-        if self.output_path.suffix.lower() == '.mp3' or self.output_path.suffix.lower() == '.m4a':
-            format_text = "MP3"
-        
-        # Format badges - matching HTML: text-[10px] font-medium bg-slate-100 dark:bg-slate-700
-        self.format_badge = ctk.CTkLabel(
-            format_frame, text=format_text,
-            font=("Segoe UI", 8),
-            padx=6, pady=2
-        )
-        self.format_badge.pack(side='left', padx=(0, 4))
-        
-        # Quality badge (will be updated)
-        self.quality_badge = ctk.CTkLabel(
-            format_frame, text="1080p",
-            font=("Segoe UI", 8),
-            padx=6, pady=2
-        )
-        self.quality_badge.pack(side='left')
-        
-        # 3. Progress - Column 2
-        progress_frame = ctk.CTkFrame(self, fg_color="transparent")
-        progress_frame.grid(row=0, column=2, sticky='ew', padx=24, pady=16)
-        progress_frame.columnconfigure(0, weight=1)
-        
-        # Percentage label
-        self.progress_percent = ctk.CTkLabel(
-            progress_frame, text="0%",
-            font=("Segoe UI", 11, "bold")
-        )
-        self.progress_percent.pack(anchor='w', pady=(0, 4))
-        
-        # Progress bar - h-2 rounded-full matching HTML
-        self.progress = ctk.CTkProgressBar(progress_frame)
-        self.progress.set(0)
-        self.progress.pack(fill='x')
-        
-        # 4. Stats - Column 3
-        stats_frame = ctk.CTkFrame(self, fg_color="transparent")
-        stats_frame.grid(row=0, column=3, sticky='n', padx=24, pady=16)
-        
-        self.speed_label = ctk.CTkLabel(
-            stats_frame, text="0 MB/s",
-            font=("Segoe UI", 11)
-        )
-        self.speed_label.pack(anchor='w')
-        
-        self.time_label = ctk.CTkLabel(
-            stats_frame, text="Calculating...",
-            font=("Segoe UI", 9)
-        )
-        self.time_label.pack(anchor='w', pady=(2, 0))
-        
-        # 5. Actions - Column 4
-        actions_frame = ctk.CTkFrame(self, fg_color="transparent")
-        actions_frame.grid(row=0, column=4, sticky='ne', padx=24, pady=16)
-        
-        # Action buttons - matching HTML: p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10
-        self.btn_pause = ctk.CTkButton(
-            actions_frame, text="⏸", command=self.toggle_pause, width=30, height=30
-        )
-        self.btn_pause.pack(side='left', padx=2)
-        
-        btn_cancel = ctk.CTkButton(
-            actions_frame, text="✕", command=self.cancel, width=30, height=30
-        )
-        btn_cancel.pack(side='left', padx=2)
-        
-        # Track download stats
+        # Internal
+        self.dl_instance = None
+        self.start_time = None
         self.downloaded_bytes = 0
         self.total_bytes = 0
-        self.start_time = time.time()
-
-    def _load_thumb(self):
-        """Load thumbnail image asynchronously."""
-        try:
-            resp = requests.get(self.thumb_url, timeout=10)
-            pil_img = Image.open(BytesIO(resp.content))
-            pil_img.thumbnail((48, 48))  # Smaller for table
-            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=(48, 48))
-            self.after(0, lambda: self.lbl_thumb.configure(image=ctk_img, text=""))
-            self.lbl_thumb.image = ctk_img
-        except Exception:
-            pass
+        
+        # Callbacks for UI updates: func(task)
+        self.observers = []
 
     def start(self):
         """Start the download."""
@@ -181,7 +66,10 @@ class DownloadItem(ctk.CTkFrame):
             return
         self.is_downloading = True
         self.is_paused = False
-        self.btn_pause.configure(text="⏸")
+        self.is_cancelled = False
+        self.error_msg = None
+        self.start_time = time.time()
+        self._notify()
         
         threading.Thread(target=self._run_download, daemon=True).start()
 
@@ -192,17 +80,38 @@ class DownloadItem(ctk.CTkFrame):
         else:
             self.is_paused = True
             self.is_downloading = False
-            self.btn_pause.configure(text="▶")
+            self.status_text = "Paused"
             if self.dl_instance:
                 self.dl_instance.stop()
+            self._notify()
                 
     def cancel(self):
         """Cancel the download."""
         self.is_paused = True
         self.is_downloading = False
+        self.is_cancelled = True
         if self.dl_instance:
             self.dl_instance.stop()
-        self.destroy()
+        self._notify()
+
+    def add_observer(self, callback):
+        self.observers.append(callback)
+        # Notify immediately with current state
+        try:
+            callback(self)
+        except Exception:
+            pass
+            
+    def remove_observer(self, callback):
+        if callback in self.observers:
+            self.observers.remove(callback)
+
+    def _notify(self):
+        for cb in self.observers:
+            try:
+                cb(self)
+            except Exception:
+                pass
 
     def _run_download(self):
         """Run the download process."""
@@ -212,53 +121,51 @@ class DownloadItem(ctk.CTkFrame):
             
             if self.video_url:
                 try:
-                    # Status updated via progress callback
                     self.dl_instance = SmartDownloader(
                         self.video_url, self.v_path, 
-                        progress_callback=lambda p, c, t: self._update_ui(p, "Video", c, t),
+                        progress_callback=lambda p, c, t: self._update_progress(p, "Video", c, t),
                         headers=self.headers
                     )
-                    self.dl_instance.start()  # This is blocking, waits for completion
+                    self.dl_instance.start()
                     video_complete = self.v_path.exists() and self.v_path.stat().st_size > 0
                 except Exception as e:
                     import logging
                     logging.error(f"Video download failed: {e}", exc_info=True)
                     raise RuntimeError(f"Video download failed: {str(e)}")
                 
-                if self.is_paused:
+                if self.is_paused or self.is_cancelled:
                     return 
             
             if self.audio_url:
                 try:
-                    # Status updated via progress callback
                     self.dl_instance = SmartDownloader(
                         self.audio_url, self.a_path,
-                        progress_callback=lambda p, c, t: self._update_ui(p, "Audio", c, t),
+                        progress_callback=lambda p, c, t: self._update_progress(p, "Audio", c, t),
                         headers=self.headers
                     )
-                    self.dl_instance.start()  # This is blocking, waits for completion
+                    self.dl_instance.start()
                     audio_complete = self.a_path.exists() and self.a_path.stat().st_size > 0
                 except Exception as e:
                     import logging
                     logging.error(f"Audio download failed: {e}", exc_info=True)
                     raise RuntimeError(f"Audio download failed: {str(e)}")
                 
-            if self.is_paused:
+            if self.is_paused or self.is_cancelled:
                 return
             
             if self.video_url and self.audio_url:
-                # Verify files are complete before muxing
                 if not video_complete:
                     raise RuntimeError("Video file download failed or is incomplete")
                 if not audio_complete:
                     raise RuntimeError("Audio file download failed or is incomplete")
                 
-                self.after(0, lambda: self.progress_percent.configure(text="Processing..."))
-                self.after(0, lambda: self.progress.set(0.5))  # Show 50% during muxing
+                self.status_text = "Processing..."
+                self.progress = 50.0
+                self._notify()
                 
                 MediaMuxer.merge(self.v_path, self.a_path, self.output_path)
                 
-                self.after(0, lambda: self.progress.set(1.0))
+                self.progress = 100.0
                 
                 if self.v_path.exists():
                     self.v_path.unlink()
@@ -266,51 +173,45 @@ class DownloadItem(ctk.CTkFrame):
                     self.a_path.unlink()
             elif self.video_url:
                 if video_complete and self.v_path.exists():
-                    # Verify file size is reasonable (not just a few KB)
                     file_size = self.v_path.stat().st_size
-                    if file_size < 1024 * 100:  # Less than 100KB is suspicious
-                        raise RuntimeError(f"Downloaded file is too small ({file_size} bytes), download may have failed")
+                    if file_size < 1024 * 100:
+                        raise RuntimeError(f"Downloaded file is too small ({file_size} bytes)")
                     self.v_path.replace(self.output_path)
                 else:
-                    raise RuntimeError("Video file download failed or is incomplete")
+                    raise RuntimeError("Video file download failed")
             elif self.audio_url:
                 if audio_complete and self.a_path.exists():
                     self.a_path.replace(self.output_path)
                 else:
-                    raise RuntimeError("Audio file download failed or is incomplete")
+                    raise RuntimeError("Audio file download failed")
 
-            self.after(0, lambda: self.progress_percent.configure(text="Completed"))
-            self.after(0, lambda: self.progress.set(1.0))
-            self.btn_pause.configure(state='disabled')
+            self.status_text = "Completed"
+            self.progress = 100.0
+            self.is_downloading = False
+            self._notify()
             
         except Exception as e:
-            if not self.is_paused:
+            if not self.is_paused and not self.is_cancelled:
                 import logging
-                logging.error(f"Download error for {self.title_text}: {e}", exc_info=True)
-                error_msg = str(e)[:50]  # Truncate long errors
-                self.after(0, lambda msg=error_msg: self.progress_percent.configure(
-                    text=f"Error: {msg}", text_color="red"
-                ))
-                self.after(0, lambda: self.speed_label.configure(text="Failed", text_color="red"))
-                self.after(0, lambda: self.time_label.configure(text=""))
+                logging.error(f"Task error: {e}", exc_info=True)
+                self.error_msg = str(e)[:50]
+                self.status_text = f"Error: {self.error_msg}"
+                self.is_downloading = False
+                self._notify()
 
-    def _update_ui(self, percent: float, text_prefix: str, current_bytes: int = 0, total_bytes: int = 0):
-        """Update UI with progress."""
-        if self.is_paused:
+    def _update_progress(self, percent: float, text_prefix: str, current_bytes: int = 0, total_bytes: int = 0):
+        if self.is_paused or self.is_cancelled:
             return
         
+        self.progress = percent
+        self.status_text = f"{percent:.0f}%"
         self.downloaded_bytes = current_bytes
         self.total_bytes = total_bytes
         
-        # Update progress bar and percentage
-        self.after(0, lambda p=percent: self.progress.set(p / 100.0))
-        self.after(0, lambda p=percent: self.progress_percent.configure(text=f"{p:.0f}%"))
-        
-        # Calculate speed and ETA
         elapsed = time.time() - (self.start_time or time.time())
         if elapsed > 0 and current_bytes > 0:
             speed_mbps = (current_bytes / (1024 * 1024)) / elapsed
-            self.after(0, lambda s=speed_mbps: self.speed_label.configure(text=f"{s:.1f} MB/s"))
+            self.speed_text = f"{speed_mbps:.1f} MB/s"
             
             if total_bytes > 0 and speed_mbps > 0:
                 remaining_bytes = total_bytes - current_bytes
@@ -318,11 +219,206 @@ class DownloadItem(ctk.CTkFrame):
                 eta_seconds = remaining_mb / speed_mbps if speed_mbps > 0 else 0
                 
                 if eta_seconds < 60:
-                    eta_text = f"{int(eta_seconds)}s remaining"
+                    self.time_text = f"{int(eta_seconds)}s remaining"
                 elif eta_seconds < 3600:
-                    eta_text = f"{int(eta_seconds / 60)}m remaining"
+                    self.time_text = f"{int(eta_seconds / 60)}m remaining"
                 else:
-                    eta_text = f"{int(eta_seconds / 3600)}h remaining"
-                
-                self.after(0, lambda t=eta_text: self.time_label.configure(text=t))
+                    self.time_text = f"{int(eta_seconds / 3600)}h remaining"
+            else:
+                self.time_text = ""
+        
+        self._notify()
+
+
+class DownloadItem(ctk.CTkFrame):
+    """View widget for a DownloadTask."""
+    
+    def __init__(self, parent, task: DownloadTask):
+        super().__init__(parent)
+        self.task = task
+        self.setup_ui()
+        
+        # Subscribe to task updates
+        self.task.add_observer(self.on_task_update)
+        
+        # Load thumbnail if needed
+        if self.task.thumb_url and not hasattr(self.task, '_cached_thumb'):
+            threading.Thread(target=self._load_thumb, daemon=True).start()
+            
+    def destroy(self):
+        # Unsubscribe before destroying
+        self.task.remove_observer(self.on_task_update)
+        super().destroy()
+        
+    def setup_ui(self):
+        """Setup card-style UI."""
+        self.configure(
+            fg_color=("#1e293b", "#1e293b"),
+            corner_radius=12,
+            border_width=1,
+            border_color=("#334155", "#334155")
+        )
+        
+        # Inner wrapper
+        inner = ctk.CTkFrame(self, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # 1. Thumbnail
+        thumb_box = ctk.CTkFrame(inner, fg_color="transparent", width=144, height=81)
+        thumb_box.pack(side="left", padx=(12, 16), pady=12)
+        thumb_box.pack_propagate(False)
+        
+        self.lbl_thumb = ctk.CTkLabel(
+            thumb_box, text="📹", fg_color="#374151", corner_radius=8,
+            width=144, height=81, font=("Helvetica", 24)
+        )
+        self.lbl_thumb.pack(fill="both", expand=True)
+        # Use cached thumb if available
+        if hasattr(self.task, '_cached_thumb'):
+             self.lbl_thumb.configure(image=self.task._cached_thumb, text="")
+        
+        # Format Badge
+        format_text = "MP4"
+        if self.task.output_path.suffix.lower() in ['.mp3', '.m4a']:
+            format_text = "MP3"
+        elif self.task.output_path.suffix.lower() == '.webm':
+            format_text = "WEBM"
+            
+        self.format_badge = ctk.CTkLabel(
+            self.lbl_thumb, text=format_text, 
+            font=("Helvetica", 10, "bold"),
+            fg_color="#000000", text_color="white", corner_radius=4
+        )
+        self.format_badge.place(relx=0.96, rely=0.94, anchor="se")
+        
+        # 2. Actions
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+        actions.pack(side="right", padx=(0, 16), fill="y")
+        
+        ctk.CTkFrame(actions, width=1, fg_color="#334155", height=40).pack(side="left", fill="y", padx=(0, 16), pady=20)
+        
+        self.btn_pause = ctk.CTkButton(
+            actions, text="⏸", command=self.task.toggle_pause, width=40, height=40,
+            fg_color="transparent", hover_color="#3b82f6", corner_radius=20,
+            font=("Helvetica", 16)
+        )
+        self.btn_pause.pack(side="left", padx=4)
+        
+        btn_cancel = ctk.CTkButton(
+            actions, text="✕", command=self.cancel_task, width=40, height=40,
+            fg_color="transparent", hover_color="#7f1d1d", corner_radius=20,
+            font=("Helvetica", 16)
+        )
+        btn_cancel.pack(side="left", padx=4)
+        
+        # 3. Info
+        info = ctk.CTkFrame(inner, fg_color="transparent")
+        info.pack(side="left", fill="both", expand=True, pady=12)
+        
+        # Row 1
+        row1 = ctk.CTkFrame(info, fg_color="transparent")
+        row1.pack(fill="x", pady=(0, 4))
+        
+        self.lbl_title = ctk.CTkLabel(
+            row1, text=self.task.title_text,
+            font=("Helvetica", 14, "bold"), text_color="white",
+            anchor='w', wraplength=350
+        )
+        self.lbl_title.pack(side="left", padx=(0, 12))
+        
+        ctk.CTkLabel(
+            row1, text="1080p",
+            font=("Helvetica", 10, "bold"),
+            fg_color="#0f172a", text_color="#94a3b8",
+            corner_radius=6, padx=8, pady=2
+        ).pack(side="left", padx=4)
+        
+        # Row 2
+        row2 = ctk.CTkFrame(info, fg_color="transparent")
+        row2.pack(fill="x", pady=(8, 0))
+        
+        meta = ctk.CTkFrame(row2, fg_color="transparent")
+        meta.pack(fill="x", pady=(0, 4))
+        
+        self.lbl_status = ctk.CTkLabel(
+            meta, text="0%",
+            font=("Helvetica", 12, "bold"), text_color="#3b82f6"
+        )
+        self.lbl_status.pack(side="left")
+        
+        stats = ctk.CTkFrame(meta, fg_color="transparent")
+        stats.pack(side="right")
+        
+        self.lbl_speed = ctk.CTkLabel(
+            stats, text="",
+            font=("Helvetica", 11), text_color="#94a3b8"
+        )
+        self.lbl_speed.pack(side="left", padx=(0, 16))
+        
+        self.lbl_time = ctk.CTkLabel(
+            stats, text="",
+            font=("Helvetica", 11), text_color="#94a3b8"
+        )
+        self.lbl_time.pack(side="left")
+        
+        self.progress = ctk.CTkProgressBar(
+            row2, height=6, corner_radius=3,
+            progress_color="#3b82f6", fg_color="#334155"
+        )
+        self.progress.set(0)
+        self.progress.pack(fill='x')
+
+    def cancel_task(self):
+        self.task.cancel()
+        # The parent view should handle removing the widget if needed, 
+        # or we update UI to show cancelled state. 
+        # For now, let's keep it in list but maybe dim it? 
+        # Or remove it? The old logic destroyed it.
+        # Let's ask parent to reload view or handle removal.
+        # Since we're in a list in MainWindow, we should let MainWindow handle removal.
+        # But for now, just update state.
+        pass
+
+    def on_task_update(self, task):
+        """Update UI based on task state."""
+        # Use after() to ensure thread safety with Tkinter
+        self.after(0, self._update_ui_safe)
+
+    def _update_ui_safe(self):
+        if not self.winfo_exists():
+            return
+            
+        # Update progress and text
+        self.progress.set(self.task.progress / 100.0)
+        
+        if self.task.error_msg:
+            self.lbl_status.configure(text=self.task.status_text, text_color="red")
+            self.lbl_speed.configure(text="Failed", text_color="red")
+        elif self.task.is_cancelled:
+            self.lbl_status.configure(text="Cancelled", text_color="#94a3b8")
+            self.lbl_speed.configure(text="-", text_color="#94a3b8")
+        else:
+            self.lbl_status.configure(text=self.task.status_text, text_color="#3b82f6")
+            self.lbl_speed.configure(text=self.task.speed_text, text_color="#94a3b8")
+            self.lbl_time.configure(text=self.task.time_text)
+            
+        # Update pause button
+        if self.task.is_paused:
+            self.btn_pause.configure(text="▶")
+        elif self.task.is_cancelled or self.task.progress >= 100:
+             self.btn_pause.configure(state='disabled')
+        else:
+            self.btn_pause.configure(text="⏸", state='normal')
+
+    def _load_thumb(self):
+        try:
+            resp = requests.get(self.task.thumb_url, timeout=10)
+            pil_img = Image.open(BytesIO(resp.content))
+            pil_img = pil_img.resize((144, 81), Image.Resampling.LANCZOS)
+            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=(144, 81))
+            self.task._cached_thumb = ctk_img
+            self.after(0, lambda: self.lbl_thumb.configure(image=ctk_img, text=""))
+            self.lbl_thumb.image = ctk_img
+        except Exception:
+            pass
 

@@ -1,41 +1,27 @@
-"""Main application window."""
+"""Main application window with integrated UI design."""
 
 import threading
 import customtkinter as ctk
-import tkinter as tk  # Still needed for some widgets like Canvas
+import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 from pathlib import Path
 from typing import Optional
 from io import BytesIO
 import requests
-from PIL import Image, ImageTk
+import platform
+import ctypes
+from PIL import Image
 from customtkinter import CTkImage
 
 from ..core import YouTubeClient, VideoMetadata, PlaylistMetadata, PlaylistEntry
 from ..utils import Config, resource_path
 from ..version import __version__
-from .download_item import DownloadItem
-from .components import COLORS
+from ..version import __version__
+from .download_item import DownloadItem, DownloadTask
 
-# Configure CustomTkinter theme to match HTML design
+# Configure CustomTkinter theme
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
-
-# Custom color theme matching HTML design
-COLORS = {
-    "primary": "#137fec",
-    "primary_hover": "#2563eb",
-    "background_dark": "#101922",
-    "surface_dark": "#1e293b",
-    "surface_light": "#ffffff",
-    "text_primary": "#f1f5f9",
-    "text_secondary": "#92adc9",
-    "border": "#233648",
-    "input_bg": "#111a22",
-    "input_border": "#324d67",
-    "header_bg": "#111a22",
-    "card": "#192633",
-}
 
 
 def format_duration(seconds: float) -> str:
@@ -55,6 +41,468 @@ def format_duration(seconds: float) -> str:
         return f"{hours}:{minutes:02d}:{secs:02d}"
 
 
+class HistoryWindow(ctk.CTkToplevel):
+    """Download History Window - shows completed downloads"""
+    def __init__(self, parent):
+        super().__init__(parent)
+        
+        self.title("Download History - VidFetch")
+        self.geometry("900x700")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Inherit theme from parent
+        self.parent = parent
+        self.bg_color = parent.bg_color
+        self.card_color = parent.card_color
+        self.border_color = parent.border_color
+        self.text_main = parent.text_main
+        self.text_secondary = parent.text_secondary
+        self.accent_blue = parent.accent_blue
+        self.font_h1 = parent.font_h1
+        self.font_h2 = parent.font_h2
+        self.font_body = parent.font_body
+        self.font_small = parent.font_small
+        self.font_caps = parent.font_caps
+        
+        self.configure(fg_color=self.bg_color)
+        
+        # Load history from config (in real app, load from config/database)
+        self.all_items = parent.config.get_history() if hasattr(parent.config, 'get_history') else []
+        
+        # Main container
+        main = ctk.CTkFrame(self, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=40, pady=30)
+        
+        # Header
+        header = ctk.CTkFrame(main, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(header, text="Download History", font=self.font_h1, text_color=self.text_main).pack(anchor="w")
+        ctk.CTkLabel(header, text="View and manage your previously downloaded videos and playlists.", 
+                    font=self.font_body, text_color=self.text_secondary).pack(anchor="w", pady=(4, 0))
+        
+        # Toolbar
+        toolbar = ctk.CTkFrame(main, fg_color="transparent")
+        toolbar.pack(fill="x", pady=(0, 16))
+        
+        # Search Input
+        search_frame = ctk.CTkFrame(toolbar, fg_color=self.card_color, corner_radius=10, height=40)
+        search_frame.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        search_frame.pack_propagate(False)
+        
+        search_icon = self.parent.get_icon_image("e8b6", (18, 18))
+        if search_icon:
+            ctk.CTkLabel(search_frame, text="", image=search_icon).pack(side="left", padx=12)
+        ctk.CTkEntry(search_frame, placeholder_text="Search history...", font=self.font_body,
+                    fg_color="transparent", border_width=0, text_color=self.text_main,
+                    placeholder_text_color=self.text_secondary).pack(side="left", fill="both", expand=True, padx=(0, 10))
+        
+        # Filter Button
+        filter_icon = self.parent.get_icon_image("e152", (18, 18))
+        ctk.CTkButton(toolbar, text="", image=filter_icon, width=40, height=40,
+                     fg_color=self.card_color, hover_color=self.border_color,
+                     corner_radius=10, cursor="hand2").pack(side="left", padx=(0, 12))
+        
+        # Clear History Button
+        delete_icon = self.parent.get_icon_image("e872", (18, 18))
+        ctk.CTkButton(toolbar, text="Clear History", image=delete_icon, compound="left",
+                     font=self.font_body, height=40,
+                     fg_color="transparent", hover_color=("#fee2e2", "#7f1d1d"), text_color="#ef4444",
+                     cursor="hand2").pack(side="right")
+        
+        # Filter Chips
+        filter_frame = ctk.CTkFrame(main, fg_color="transparent")
+        filter_frame.pack(fill="x", pady=(0, 20))
+        
+        self.filter_var = ctk.StringVar(value="All")
+        self.filter_btn = ctk.CTkSegmentedButton(filter_frame, values=["All", "Videos", "Playlists", "Audio"],
+                                                 variable=self.filter_var, font=self.font_body,
+                                                 fg_color=self.card_color, selected_color=self.accent_blue,
+                                                 selected_hover_color="#0d6bc4", unselected_color=self.card_color,
+                                                 unselected_hover_color=self.border_color, text_color=self.text_main,
+                                                 command=self.on_filter_change)
+        self.filter_btn.pack(side="left")
+        
+        # Scrollable Grid
+        self.grid_container = ctk.CTkScrollableFrame(main, fg_color="transparent")
+        self.grid_container.pack(fill="both", expand=True)
+        
+        # Configure grid columns
+        for i in range(4):
+            self.grid_container.grid_columnconfigure(i, weight=1, uniform="col")
+        
+        # Footer
+        footer = ctk.CTkFrame(main, fg_color="transparent", height=40)
+        footer.pack(fill="x", pady=(20, 0))
+        self.footer_label = ctk.CTkLabel(footer, text="", font=self.font_small, text_color=self.text_secondary)
+        self.footer_label.pack()
+        
+        # Initial render
+        self.refresh_grid()
+    
+    def get_icon_image(self, unicode_code, size=(20, 20)):
+        """Get icon image - delegate to parent"""
+        return self.parent.get_icon_image(unicode_code, size)
+    
+    def on_filter_change(self, value):
+        """Handle filter selection change"""
+        self.refresh_grid()
+    
+    def refresh_grid(self):
+        """Refresh the grid based on current filter"""
+        # Clear existing cards
+        for widget in self.grid_container.winfo_children():
+            widget.destroy()
+        
+        # Get current filter
+        filter_val = self.filter_var.get().lower()
+        
+        # Filter items
+        if filter_val == "all":
+            items = self.all_items
+        elif filter_val == "videos":
+            items = [i for i in self.all_items if i.get("type") == "video"]
+        elif filter_val == "playlists":
+            items = [i for i in self.all_items if i.get("type") == "playlist"]
+        elif filter_val == "audio":
+            items = [i for i in self.all_items if i.get("type") == "audio"]
+        else:
+            items = self.all_items
+        
+        # Show empty state or create cards
+        if not items:
+            # Empty state
+            empty = ctk.CTkFrame(self.grid_container, fg_color="transparent")
+            empty.grid(row=0, column=0, columnspan=4, pady=60)
+            
+            icon = self.parent.get_icon_image("e889", (64, 64))
+            if icon:
+                ctk.CTkLabel(empty, text="", image=icon).pack(pady=(0, 16))
+            ctk.CTkLabel(empty, text="No Download History", font=self.font_h2, text_color=self.text_main).pack()
+            ctk.CTkLabel(empty, text="Your completed downloads will appear here.", 
+                        font=self.font_body, text_color=self.text_secondary).pack(pady=(8, 0))
+        else:
+            for idx, item in enumerate(items):
+                row = idx // 4
+                col = idx % 4
+                self.create_history_card(self.grid_container, item, row, col)
+        
+        # Update footer
+        if self.footer_label:
+            self.footer_label.configure(text=f"Showing {len(items)} of {len(self.all_items)} downloads")
+    
+    def create_history_card(self, parent, data, row, col):
+        """Create a single history card"""
+        card = ctk.CTkFrame(parent, fg_color=self.card_color, corner_radius=12, 
+                           border_width=1, border_color=self.border_color)
+        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+        
+        # Thumbnail placeholder
+        thumb = ctk.CTkFrame(card, fg_color=data.get("color", "#333"), height=100, corner_radius=8)
+        thumb.pack(fill="x", padx=8, pady=8)
+        thumb.pack_propagate(False)
+        
+        # Duration badge
+        if "duration" in data:
+            ctk.CTkLabel(thumb, text=data["duration"], font=("Helvetica", 9, "bold"),
+                        fg_color="#000000", text_color="white", corner_radius=4, padx=4).place(relx=0.95, rely=0.9, anchor="se")
+        
+        # Type icon
+        type_icon_map = {"audio": "e3a1", "video": "e02c", "playlist": "e05f"}
+        type_colors = {"audio": "#3b82f6", "video": "#ef4444", "playlist": "#8b5cf6"}
+        icon_code = type_icon_map.get(data.get("type", "video"), "e02c")
+        icon_bg = type_colors.get(data.get("type", "video"), "#ef4444")
+        type_icon = self.parent.get_icon_image(icon_code, (14, 14))
+        if type_icon:
+            icon_label = ctk.CTkLabel(thumb, text="", image=type_icon, fg_color=icon_bg, 
+                        width=24, height=24, corner_radius=6)
+            icon_label.place(x=8, y=8)
+        
+        # Content
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Title row
+        title_row = ctk.CTkFrame(content, fg_color="transparent")
+        title_row.pack(fill="x")
+        
+        ctk.CTkLabel(title_row, text=data.get("title", "Unknown"), font=self.font_body, text_color=self.text_main,
+                    wraplength=150, anchor="w", justify="left").pack(side="left", fill="x", expand=True)
+        more_icon = self.parent.get_icon_image("e5d4", (16, 16))
+        if more_icon:
+            ctk.CTkButton(title_row, text="", image=more_icon, width=24, height=24,
+                         fg_color="transparent", hover_color=self.border_color,
+                         cursor="hand2").pack(side="right")
+        
+        # Meta row
+        meta = ctk.CTkFrame(content, fg_color="transparent")
+        meta.pack(fill="x", pady=(8, 0))
+        
+        meta_left = ctk.CTkFrame(meta, fg_color="transparent")
+        meta_left.pack(side="left")
+        
+        if "size" in data and "format" in data:
+            ctk.CTkLabel(meta_left, text=f"{data['size']} • {data['format']}", font=self.font_small, 
+                        text_color=self.text_secondary).pack(anchor="w")
+        if "date" in data:
+            ctk.CTkLabel(meta_left, text=data["date"], font=self.font_small, 
+                        text_color=self.text_secondary).pack(anchor="w")
+        
+        # Folder button
+        folder_icon = self.parent.get_icon_image("e2c8", (18, 18))
+        if folder_icon:
+            ctk.CTkButton(meta, text="", image=folder_icon, width=32, height=32,
+                         fg_color=("#e0f2fe", "#1e3a5f"), hover_color=self.accent_blue, 
+                         corner_radius=50, cursor="hand2").pack(side="right")
+
+
+class SettingsWindow(ctk.CTkToplevel):
+    """Settings Window - app configuration"""
+    def __init__(self, parent):
+        super().__init__(parent)
+        
+        self.title("Settings - VidFetch")
+        self.geometry("800x700")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Inherit theme from parent
+        self.parent = parent
+        self.bg_color = parent.bg_color
+        self.card_color = parent.card_color
+        self.border_color = parent.border_color
+        self.text_main = parent.text_main
+        self.text_secondary = parent.text_secondary
+        self.accent_blue = parent.accent_blue
+        self.font_h1 = parent.font_h1
+        self.font_h2 = parent.font_h2
+        self.font_body = parent.font_body
+        self.font_small = parent.font_small
+        
+        self.configure(fg_color=self.bg_color)
+        
+        # Main scrollable container
+        main = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=40, pady=30)
+        
+        # Header
+        header = ctk.CTkFrame(main, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 24))
+        
+        ctk.CTkLabel(header, text="Settings", font=self.font_h1, text_color=self.text_main).pack(anchor="w")
+        ctk.CTkLabel(header, text="Customize your VidFetch experience and preferences.", 
+                    font=self.font_body, text_color=self.text_secondary).pack(anchor="w", pady=(4, 0))
+        
+        # --- Downloads Section ---
+        self.create_section_header(main, "e2c0", "Downloads")
+        
+        downloads_card = ctk.CTkFrame(main, fg_color=self.card_color, corner_radius=12, 
+                                      border_width=1, border_color=self.border_color)
+        downloads_card.pack(fill="x", pady=(0, 24))
+        
+        downloads_inner = ctk.CTkFrame(downloads_card, fg_color="transparent")
+        downloads_inner.pack(fill="x", padx=24, pady=20)
+        
+        # Row 1: Video Quality + Audio Format
+        row1 = ctk.CTkFrame(downloads_inner, fg_color="transparent")
+        row1.pack(fill="x", pady=(0, 16))
+        
+        # Video Quality
+        vq_frame = ctk.CTkFrame(row1, fg_color="transparent")
+        vq_frame.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        ctk.CTkLabel(vq_frame, text="Default Video Quality", font=self.font_body, 
+                    text_color=self.text_main).pack(anchor="w", pady=(0, 8))
+        self.video_quality = ctk.CTkOptionMenu(vq_frame, values=["Best Available (4K/8K)", "Full HD (1080p)", "HD (720p)", "Data Saver (480p)"],
+                                               font=self.font_body, fg_color=self.bg_color, button_color=self.border_color,
+                                               button_hover_color=self.accent_blue, dropdown_fg_color=self.card_color,
+                                               dropdown_hover_color=self.border_color, height=44, corner_radius=10)
+        self.video_quality.pack(fill="x")
+        
+        # Audio Format
+        af_frame = ctk.CTkFrame(row1, fg_color="transparent")
+        af_frame.pack(side="left", fill="x", expand=True, padx=(12, 0))
+        ctk.CTkLabel(af_frame, text="Default Audio Format", font=self.font_body, 
+                    text_color=self.text_main).pack(anchor="w", pady=(0, 8))
+        self.audio_format = ctk.CTkOptionMenu(af_frame, values=["MP3 (320kbps)", "MP3 (128kbps)", "M4A (AAC)", "WAV (Lossless)"],
+                                              font=self.font_body, fg_color=self.bg_color, button_color=self.border_color,
+                                              button_hover_color=self.accent_blue, dropdown_fg_color=self.card_color,
+                                              dropdown_hover_color=self.border_color, height=44, corner_radius=10)
+        self.audio_format.pack(fill="x")
+        
+        # Row 2: Download Location
+        ctk.CTkLabel(downloads_inner, text="Download Location", font=self.font_body, 
+                    text_color=self.text_main).pack(anchor="w", pady=(0, 8))
+        
+        loc_row = ctk.CTkFrame(downloads_inner, fg_color="transparent")
+        loc_row.pack(fill="x")
+        
+        loc_input = ctk.CTkFrame(loc_row, fg_color=self.bg_color, corner_radius=10, height=44,
+                                 border_width=1, border_color=self.border_color)
+        loc_input.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        loc_input.pack_propagate(False)
+        
+        folder_icon = self.parent.get_icon_image("e2c7", (18, 18))
+        if folder_icon:
+            ctk.CTkLabel(loc_input, text="", image=folder_icon).pack(side="left", padx=12)
+        
+        self.path_var = tk.StringVar(value=str(parent.config.download_path))
+        path_label = ctk.CTkLabel(loc_input, textvariable=self.path_var, font=self.font_body, 
+                    text_color=self.text_secondary)
+        path_label.pack(side="left", fill="x", expand=True)
+        
+        def browse_path():
+            d = filedialog.askdirectory()
+            if d:
+                self.path_var.set(d)
+                parent.config.set_download_path(d)
+        
+        ctk.CTkButton(loc_row, text="Change Folder", font=self.font_body, height=44,
+                     fg_color=("#e0f2fe", "#1e3a5f"), hover_color=self.accent_blue,
+                     text_color=self.accent_blue, corner_radius=10, cursor="hand2",
+                     command=browse_path).pack(side="right")
+        
+        # --- Appearance & Notifications Row ---
+        two_col = ctk.CTkFrame(main, fg_color="transparent")
+        two_col.pack(fill="x", pady=(0, 24))
+        two_col.grid_columnconfigure(0, weight=1)
+        two_col.grid_columnconfigure(1, weight=1)
+        
+        # --- Appearance Section (Left) ---
+        app_col = ctk.CTkFrame(two_col, fg_color="transparent")
+        app_col.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        
+        self.create_section_header(app_col, "e40a", "Appearance")
+        
+        app_card = ctk.CTkFrame(app_col, fg_color=self.card_color, corner_radius=12, 
+                               border_width=1, border_color=self.border_color)
+        app_card.pack(fill="both", expand=True)
+        
+        app_inner = ctk.CTkFrame(app_card, fg_color="transparent")
+        app_inner.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Theme Selection
+        ctk.CTkLabel(app_inner, text="App Theme", font=self.font_body, text_color=self.text_main).pack(anchor="w", pady=(0, 12))
+        
+        theme_row = ctk.CTkFrame(app_inner, fg_color="transparent")
+        theme_row.pack(fill="x", pady=(0, 20))
+        
+        self.theme_var = ctk.StringVar(value="Dark")
+        themes = [("Light", "e518"), ("Dark", "e51c"), ("System", "e322")]
+        
+        for name, icon in themes:
+            self.create_theme_option(theme_row, name, icon)
+        
+        # --- Notifications Section (Right) ---
+        notif_col = ctk.CTkFrame(two_col, fg_color="transparent")
+        notif_col.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
+        
+        self.create_section_header(notif_col, "e7f4", "Notifications")
+        
+        notif_card = ctk.CTkFrame(notif_col, fg_color=self.card_color, corner_radius=12, 
+                                 border_width=1, border_color=self.border_color)
+        notif_card.pack(fill="both", expand=True)
+        
+        notif_inner = ctk.CTkFrame(notif_card, fg_color="transparent")
+        notif_inner.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Toggle options
+        self.create_toggle_option(notif_inner, "Download Completed", "Show notification when done", True)
+        self.create_toggle_option(notif_inner, "Download Failed", "Notify if download fails", True)
+        self.create_toggle_option(notif_inner, "Sound Effects", "Play sound on completion", False)
+        
+        # --- Footer ---
+        footer = ctk.CTkFrame(main, fg_color="transparent")
+        footer.pack(fill="x", pady=(16, 0))
+        
+        # Reset button (left)
+        ctk.CTkButton(footer, text="Reset to Defaults", font=self.font_body, height=40,
+                     fg_color="transparent", hover_color=("#fee2e2", "#7f1d1d"), 
+                     text_color=self.text_secondary, cursor="hand2").pack(side="left")
+        
+        # Save/Cancel buttons (right)
+        btn_row = ctk.CTkFrame(footer, fg_color="transparent")
+        btn_row.pack(side="right")
+        
+        ctk.CTkButton(btn_row, text="Cancel", font=self.font_body, height=40, width=100,
+                     fg_color="transparent", hover_color=self.border_color,
+                     text_color=self.text_main, border_width=1, border_color=self.border_color,
+                     corner_radius=10, cursor="hand2", command=self.destroy).pack(side="left", padx=(0, 12))
+        
+        def save_settings():
+            parent.config.set_download_path(self.path_var.get())
+            self.destroy()
+        
+        ctk.CTkButton(btn_row, text="Save Changes", font=self.font_body, height=40, width=120,
+                     fg_color=self.accent_blue, hover_color="#0d6bc4",
+                     text_color="white", corner_radius=10, cursor="hand2",
+                     command=save_settings).pack(side="left")
+    
+    def create_section_header(self, parent, icon_code, title):
+        """Create a section header with icon"""
+        header = ctk.CTkFrame(parent, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 12))
+        header_icon = self.parent.get_icon_image(icon_code, (20, 20))
+        if header_icon:
+            ctk.CTkLabel(header, text="", image=header_icon).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(header, text=title, font=self.font_h2, text_color=self.text_main).pack(side="left")
+    
+    def create_theme_option(self, parent, name, icon):
+        """Create a theme selection option"""
+        is_selected = self.theme_var.get() == name
+        
+        frame = ctk.CTkFrame(parent, fg_color=self.bg_color if not is_selected else ("#e0f2fe", "#1e3a5f"), 
+                            corner_radius=10, border_width=1, 
+                            border_color=self.accent_blue if is_selected else self.border_color,
+                            width=80, height=70)
+        frame.pack(side="left", padx=(0, 8))
+        frame.pack_propagate(False)
+        
+        inner = ctk.CTkFrame(frame, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+        
+        theme_icon = self.parent.get_icon_image(icon, (24, 24))
+        if theme_icon:
+            ctk.CTkLabel(inner, text="", image=theme_icon).pack()
+        ctk.CTkLabel(inner, text=name, font=self.font_small, text_color=self.text_main).pack(pady=(4, 0))
+        
+        # Make clickable
+        def set_theme(n=name):
+            self.theme_var.set(n)
+            for widget in parent.winfo_children():
+                if isinstance(widget, ctk.CTkFrame):
+                    widget.configure(fg_color=self.bg_color, border_color=self.border_color)
+            frame.configure(fg_color=("#e0f2fe", "#1e3a5f"), border_color=self.accent_blue)
+        
+        frame.bind("<Button-1>", lambda e, n=name: set_theme(n))
+        for widget in frame.winfo_children():
+            widget.bind("<Button-1>", lambda e, n=name: set_theme(n))
+        frame.configure(cursor="hand2")
+    
+    def create_toggle_option(self, parent, title, description, default_on):
+        """Create a toggle switch option"""
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 16))
+        
+        text_col = ctk.CTkFrame(row, fg_color="transparent")
+        text_col.pack(side="left", fill="x", expand=True)
+        
+        ctk.CTkLabel(text_col, text=title, font=self.font_body, text_color=self.text_main).pack(anchor="w")
+        ctk.CTkLabel(text_col, text=description, font=self.font_small, text_color=self.text_secondary, 
+                    wraplength=200).pack(anchor="w")
+        
+        switch = ctk.CTkSwitch(row, text="", onvalue=True, offvalue=False,
+                              button_color=self.accent_blue, button_hover_color="#0d6bc4",
+                              progress_color=self.accent_blue, fg_color=self.border_color)
+        switch.pack(side="right")
+        if default_on:
+            switch.select()
+    
+    def get_icon_image(self, unicode_code, size=(20, 20)):
+        """Get icon image - delegate to parent"""
+        return self.parent.get_icon_image(unicode_code, size)
+
+
 class VidFetchApp(ctk.CTk):
     """Main application window for VidFetch."""
     
@@ -62,487 +510,759 @@ class VidFetchApp(ctk.CTk):
         super().__init__()
         try:
             self.title(f"VidFetch v{__version__}")
-            self.geometry("1200x800")
-            self.configure(fg_color=COLORS["background_dark"])
+            self.geometry("1000x800")
+            ctk.set_appearance_mode("dark")
         except Exception as e:
             import logging
             logging.error(f"Error in VidFetchApp.__init__: {e}", exc_info=True)
             raise
         
+        # Set Window Icon (cross-platform)
         try:
             icon_path = resource_path("assets/logo.ico")
-            if icon_path.exists():
-                icon_str = str(icon_path).replace('/', '\\')
-                self.iconbitmap(icon_str)
+            is_mac = platform.system() == 'Darwin'
+            
+            if is_mac:
+                icon_path_png = resource_path("assets/logo.png")
+                if icon_path_png.exists():
+                    try:
+                        photo = tk.PhotoImage(file=str(icon_path_png))
+                        self.iconphoto(True, photo)
+                    except Exception as e:
+                        pass
+            else:
+                if icon_path.exists():
+                    icon_str = str(icon_path).replace('/', '\\')
+                    self.iconbitmap(icon_str)
         except Exception:
             pass
         
         try:
-            import ctypes
             if hasattr(ctypes, 'windll'):
                 myappid = f"com.vidfetch.app.{__version__}"
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
             pass
 
+        # Theme colors (Light, Dark) tuples
+        self.accent_blue = "#137fec"
+        self.accent_green = "#22c55e"
+        self.bg_color = ("#f6f7f8", "#101922")
+        self.header_color = ("#ffffff", "#101922")
+        self.card_color = ("#ffffff", "#1e293b")
+        self.border_color = ("#e5e7eb", "#1e293b")
+        self.col_primary = self.accent_blue
+        self.col_success = "#22c55e"
+        self.col_error = "#ef4444"
+        self.text_main = ("#111827", "#ffffff")
+        self.text_secondary = ("#6b7280", "#94a3b8")
+
+        # Setup fonts and icons
+        self.setup_fonts()
+        self.setup_icons()
+
         # Data
         self.current_metadata: Optional[VideoMetadata] = None
         self.current_playlist: Optional[PlaylistMetadata] = None
         self.youtube = YouTubeClient()
         self.config = Config()
-        self.current_view = "home"
         self.format_mode = "video"  # "video" or "audio"
-        self.download_items = []  # Track download items for downloads view
+        self.download_tasks = []  # Track download tasks (models)
         
-        self.setup_ui()
+        # Main Layout
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
+        self.create_header()
+        self.create_main_content()
+        self.create_footer() 
+        # Controls
 
-    def setup_ui(self):
-        """Setup the user interface."""
-        # Main container
-        main_container = ctk.CTkFrame(self, fg_color=COLORS["background_dark"])
-        main_container.pack(fill='both', expand=True)
-        
-        # Header
-        self.setup_header(main_container)
-        
-        # Content area (views)
-        self.content_area = ctk.CTkFrame(main_container, fg_color=COLORS["background_dark"])
-        self.content_area.pack(fill='both', expand=True)
-        
-        # Initialize views
-        self.setup_home_view()
-        self.setup_downloads_view()
-        
-        # Settings modal (initially hidden)
-        self.setup_settings_modal()
-        
-        # Show home view by default
-        self.show_view("home")
 
-    def setup_header(self, parent):
-        """Setup the global header."""
-        header = ctk.CTkFrame(parent, height=64, fg_color=COLORS["header_bg"], corner_radius=0)
-        header.pack(fill='x', side='top')
-        header.pack_propagate(False)
-        
-        # Inner container with max-width 1200px equivalent
-        inner = ctk.CTkFrame(header, fg_color=COLORS["header_bg"], corner_radius=0)
-        inner.pack(fill='both', expand=True, padx=24, pady=12)
-        
-        # Logo and title
-        logo_frame = ctk.CTkFrame(inner, fg_color=COLORS["header_bg"], corner_radius=0)
-        logo_frame.pack(side='left')
-        
-        # Logo icon container (size-8 rounded-lg bg-primary/10)
-        icon_container = ctk.CTkFrame(
-            logo_frame, width=32, height=32,
-            fg_color=COLORS["primary"], corner_radius=8
-        )
-        icon_container.pack(side='left', padx=(0, 12))
-        
-        # Logo icon (download symbol)
-        logo_icon = ctk.CTkLabel(
-            icon_container, text="⬇",
-            text_color="white",
-            font=("Segoe UI", 16)
-        )
-        logo_icon.place(relx=0.5, rely=0.5, anchor='center')
-        
-        title = ctk.CTkLabel(
-            logo_frame, text="VidFetch",
-            font=("Segoe UI", 18, "bold"),
-            text_color=COLORS["text_primary"]
-        )
-        title.pack(side='left')
-        
-        # Navigation (right side)
-        nav_frame = ctk.CTkFrame(inner, fg_color=COLORS["header_bg"], corner_radius=0)
-        nav_frame.pack(side='right')
-        
-        home_btn = ctk.CTkButton(
-            nav_frame, text="Home",
-            command=lambda: self.show_view("home"),
-            fg_color="transparent",
-            text_color=COLORS["text_secondary"],
-            hover_color=COLORS["header_bg"],
-            font=("Segoe UI", 11)
-        )
-        home_btn.pack(side='left', padx=8)
-        
-        downloads_btn = ctk.CTkButton(
-            nav_frame, text="Downloads",
-            command=lambda: self.show_view("downloads"),
-            fg_color="transparent",
-            text_color=COLORS["text_secondary"],
-            hover_color=COLORS["header_bg"],
-            font=("Segoe UI", 11)
-        )
-        downloads_btn.pack(side='left', padx=8)
-        
-        settings_btn = ctk.CTkButton(
-            nav_frame, text="⚙", command=self.open_settings,
-            fg_color="transparent",
-            text_color=COLORS["text_secondary"],
-            hover_color=COLORS["header_bg"],
-            width=32, height=32
-        )
-        settings_btn.pack(side='left', padx=8)
+    def add_single(self, fmt, best_audio=None):
+        # ...
+        try:
+            # ... (path calculation same) ...
+            safe_title = "".join([c for c in self.current_metadata.title if c.isalnum() or c in (' ', '-', '_')]).strip()
+            filename = f"{safe_title}_{fmt.resolution}.{fmt.ext}"
+            save_path = self.config.download_path / filename
+            
+            # Create Task
+            task = DownloadTask(
+                 self.current_metadata.title, fmt.url,
+                 best_audio.url if best_audio else None, save_path,
+                 thumb_url=self.current_metadata.thumbnail_url,
+                 headers=fmt.http_headers
+            )
+            self.download_tasks.append(task)
+            task.start()
+            
+            self.show_view("downloads")
+            
+        except Exception as e:
+            # ...
+            pass
 
-    def setup_home_view(self):
-        """Setup the home view."""
-        home_view = ctk.CTkFrame(self.content_area, fg_color=COLORS["background_dark"], corner_radius=0)
-        home_view.pack(fill='both', expand=True)
+    def update_downloads_display(self):
+        # This might not be needed anymore or just updates the counter in sidebar if exists?
+        pass
+
+    def pause_all_downloads(self):
+        for task in self.download_tasks:
+            if not task.is_paused:
+                task.toggle_pause()
+
+    def resume_all_downloads(self):
+        for task in self.download_tasks:
+            if task.is_paused:
+                task.toggle_pause()
         
-        # Centered container
-        center_frame = ctk.CTkFrame(home_view, fg_color="transparent", corner_radius=0)
-        center_frame.place(relx=0.5, rely=0.5, anchor='center')
+        # Main Layout
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         
-        # Hero heading
-        hero_frame = ctk.CTkFrame(center_frame, fg_color="transparent", corner_radius=0)
-        hero_frame.pack(pady=(0, 40))
+        self.create_header()
+        self.create_main_content()
+        self.create_footer()
+    
+    def setup_fonts(self):
+        """Standardized font management - using Helvetica system font"""
+        self.font_h1 = ctk.CTkFont(family="Helvetica", size=48, weight="bold")
+        self.font_h2 = ctk.CTkFont(family="Helvetica", size=18, weight="bold")
+        self.font_body = ctk.CTkFont(family="Helvetica", size=15)
+        self.font_small = ctk.CTkFont(family="Helvetica", size=13)
+        self.font_caps = ctk.CTkFont(family="Helvetica", size=11, weight="bold")
+    
+    def setup_icons(self):
+        """Setup icon mapping and load icon images"""
+        # Mapping from Unicode codes to file names (Material Symbols Rounded)
+        self.icon_map = {
+            "e8b6": "search",
+            "e152": "filter_list",
+            "e872": "delete",
+            "e3a1": "music_note",
+            "e02c": "videocam",
+            "e05f": "playlist_play",
+            "e5d4": "more_vert",
+            "e2c8": "folder",
+            "e2c7": "folder",
+            "e2c0": "download",
+            "e941": "download",
+            "e40a": "palette",
+            "e518": "light_mode",
+            "e51c": "moon_stars",
+            "e322": "settings_brightness",
+            "e7f4": "notifications",
+            "e037": "play_arrow",
+            "e038": "video_library",
+            "e04a": "video_library",
+            "f090": "download",
+            "e889": "history",
+            "e8b8": "settings",
+            "e039": "play_circle",
+            "e034": "pause_circle",
+            "e876": "check_circle",
+            "e1db": "database",
+            "e916": "event_available",
+            "e8b5": "calendar_check",
+            "e5cd": "close_small",
+            "e157": "add_link",
+            "e14f": "content_paste",
+        }
         
-        # Title with accent color on "Downloader" - text-4xl md:text-6xl font-black tracking-tight leading-[1.1]
-        title_frame = ctk.CTkFrame(hero_frame, fg_color="transparent", corner_radius=0)
-        title_frame.pack()
+        # Cache for loaded icons
+        self._icon_cache = {}
+    
+    def get_icon_image(self, unicode_code, size=(20, 20)):
+        """Get icon as CTkImage from PNG file with proper light/dark mode support"""
+        # Extract code from unicode string if needed
+        if unicode_code.startswith("\\u"):
+            code = unicode_code[2:]
+        elif unicode_code.startswith("u"):
+            code = unicode_code[1:]
+        else:
+            code = unicode_code.lower()
         
-        ctk.CTkLabel(
-            title_frame, text="Video ",
-            font=("Segoe UI", 60, "bold"),
-            text_color=COLORS["text_primary"]
-        ).pack(side='left')
+        # Get icon name from mapping
+        icon_name = self.icon_map.get(code)
+        if not icon_name:
+            return None
         
-        ctk.CTkLabel(
-            title_frame, text="Downloader",
-            font=("Segoe UI", 60, "bold"),
-            text_color=COLORS["primary"]
-        ).pack(side='left')
+        # Create cache key
+        cache_key = f"{icon_name}_{size[0]}_{size[1]}"
         
-        hero_subtitle = ctk.CTkLabel(
-            hero_frame, 
-            text="Download videos and playlists in 4K, HD, or MP3 audio instantly. No registration required.",
-            font=("Segoe UI", 16),
-            text_color=COLORS["text_secondary"],
-            wraplength=700
-        )
-        hero_subtitle.pack(pady=(16, 0))
+        if cache_key in self._icon_cache:
+            return self._icon_cache[cache_key]
         
-        # Main input card
-        card = ctk.CTkFrame(center_frame, fg_color=COLORS["card"], corner_radius=16)
-        card.pack(pady=20, padx=20)
+        # Load icon files using resource_path
+        try:
+            icons_dir = resource_path("assets/icons")
+            
+            # Find dark icon (for light mode) - color code 1F1F1F
+            dark_icon_file = None
+            for file in icons_dir.glob(f"{icon_name}_*1F1F1F*.png"):
+                dark_icon_file = file
+                break
+            
+            # Find light icon (for dark mode) - color code E0E0E0 or FFFFFF
+            light_icon_file = None
+            for file in icons_dir.glob(f"{icon_name}_*E0E0E0*.png"):
+                light_icon_file = file
+                break
+            if not light_icon_file:
+                for file in icons_dir.glob(f"{icon_name}_*FFFFFF*.png"):
+                    light_icon_file = file
+                    break
+            
+            # Fallback: if no color-coded files found, try any file with icon name
+            if not dark_icon_file:
+                for file in icons_dir.glob(f"{icon_name}_*.png"):
+                    if "E0E0E0" not in file.name and "FFFFFF" not in file.name:
+                        dark_icon_file = file
+                        break
+            
+            # Special fallback for content_paste -> content_copy
+            if not dark_icon_file and icon_name == "content_paste":
+                for file in icons_dir.glob("content_copy_*1F1F1F*.png"):
+                    dark_icon_file = file
+                    break
+                if not light_icon_file:
+                    for file in icons_dir.glob("content_copy_*E0E0E0*.png"):
+                        light_icon_file = file
+                        break
+                    if not light_icon_file:
+                        for file in icons_dir.glob("content_copy_*FFFFFF*.png"):
+                            light_icon_file = file
+                            break
+            
+            if not dark_icon_file or not dark_icon_file.exists():
+                return None
+            
+            # Load images with PIL
+            dark_img = Image.open(str(dark_icon_file))
+            
+            if light_icon_file and light_icon_file.exists():
+                light_img = Image.open(str(light_icon_file))
+            else:
+                light_img = dark_img
+            
+            # Create CTkImage
+            icon_image = ctk.CTkImage(
+                light_image=dark_img,
+                dark_image=light_img,
+                size=size
+            )
+            
+            # Cache it
+            self._icon_cache[cache_key] = icon_image
+            return icon_image
+            
+        except Exception as e:
+            return None
+
+    def go_home(self):
+        """Navigate back to the home page"""
+        self.clear_content()
+        self.create_main_content()
+
+    def create_header(self):
+        """Create the header with new design"""
+        # Header container with proper borders
+        header_container = ctk.CTkFrame(self, corner_radius=0, fg_color=self.header_color)
+        header_container.grid(row=0, column=0, sticky="ew")
         
-        # Format toggles
-        format_frame = ctk.CTkFrame(card, fg_color=COLORS["border"], corner_radius=12)
-        format_frame.pack(pady=(24, 24), padx=24)
+        # Top border
+        top_border = ctk.CTkFrame(header_container, height=1, corner_radius=0, fg_color=self.border_color)
+        top_border.pack(fill="x")
         
-        self.format_var = ctk.StringVar(value="video")
-        self.format_var.trace('w', lambda *args: self.on_format_change(self.format_var.get()))
+        # Main header with increased height
+        self.header = ctk.CTkFrame(header_container, height=80, corner_radius=0, fg_color=self.header_color)
+        self.header.pack(fill="x")
+        self.header.pack_propagate(False)
         
-        video_btn = ctk.CTkRadioButton(
-            format_frame, text="MP4 Video", variable=self.format_var, value="video",
-            font=("Segoe UI", 11, "bold"),
-            fg_color=COLORS["primary"],
-            text_color=COLORS["text_secondary"]
-        )
-        video_btn.pack(side='left', padx=8, pady=8)
+        # Bottom border
+        bottom_border = ctk.CTkFrame(header_container, height=1, corner_radius=0, fg_color=self.border_color)
+        bottom_border.pack(fill="x")
         
-        audio_btn = ctk.CTkRadioButton(
-            format_frame, text="MP3 Audio", variable=self.format_var, value="audio",
-            font=("Segoe UI", 11, "bold"),
-            fg_color=COLORS["primary"],
-            text_color=COLORS["text_secondary"]
-        )
-        audio_btn.pack(side='left', padx=8, pady=8)
+        # Logo side
+        logo_box = ctk.CTkFrame(self.header, fg_color="transparent")
+        logo_box.pack(side="left", padx=32, pady=20)
         
-        # Input area
-        input_frame = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
-        input_frame.pack(fill='x', pady=(0, 16), padx=24)
+        # Logo using resource_path
+        try:
+            img_path = resource_path("assets/logo.png")
+            if img_path.exists():
+                pil_img = Image.open(str(img_path))
+                logo_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(36, 36))
+                self.logo_label = ctk.CTkLabel(logo_box, text="", image=logo_img, width=36, height=36)
+            else:
+                self.logo_label = ctk.CTkLabel(logo_box, text="", width=36, height=36)
+                fallback_img = self.get_icon_image("e038", (36, 36))
+                if fallback_img: 
+                    self.logo_label.configure(image=fallback_img)
+        except Exception as e:
+            self.logo_label = ctk.CTkLabel(logo_box, text="", width=36, height=36)
+            fallback_img = self.get_icon_image("e038", (36, 36))
+            if fallback_img: 
+                self.logo_label.configure(image=fallback_img)
+        
+        self.logo_label.pack(side="left", padx=(0, 12))
+        self.logo_label.bind("<Button-1>", lambda e: self.go_home())
+        self.logo_label.configure(cursor="hand2")
+        
+        title_label = ctk.CTkLabel(logo_box, text="VidFetch", font=self.font_h2, text_color=self.text_main)
+        title_label.pack(side="left")
+        title_label.bind("<Button-1>", lambda e: self.go_home())
+        title_label.configure(cursor="hand2")
+
+        # Buttons side
+        actions = ctk.CTkFrame(self.header, fg_color="transparent")
+        actions.pack(side="right", padx=32, pady=20)
+
+        # Theme toggle
+        theme_icon = self.get_icon_image("e51c", (20, 20))
+        self.theme_btn = ctk.CTkButton(actions, text="", image=theme_icon, width=40, height=40,
+                                      corner_radius=10, fg_color="transparent",
+                                      hover_color=self.bg_color, command=self.toggle_theme)
+        self.theme_btn.pack(side="left", padx=6)
+        
+        # Downloads icon
+        download_icon = self.get_icon_image("f090", (20, 20))
+        ctk.CTkButton(actions, text="", image=download_icon, width=40, height=40,
+                     corner_radius=10, fg_color="transparent",
+                     hover_color=self.bg_color, command=self.show_downloads_view).pack(side="left", padx=6)
+        
+        # History button
+        history_icon = self.get_icon_image("e889", (20, 20))
+        ctk.CTkButton(actions, text="", image=history_icon, width=40, height=40,
+                     corner_radius=10, fg_color="transparent",
+                     hover_color=self.bg_color, command=self.show_history_view).pack(side="left", padx=6)
+        
+        # Settings button
+        settings_icon = self.get_icon_image("e8b8", (20, 20))
+        ctk.CTkButton(actions, text="", image=settings_icon, width=40, height=40,
+                     corner_radius=10, fg_color="transparent",
+                     hover_color=self.bg_color, command=self.show_settings_view).pack(side="left", padx=6)
+    
+    def toggle_theme(self):
+        """Toggle between light and dark theme"""
+        new_mode = "Light" if ctk.get_appearance_mode() == "Dark" else "Dark"
+        ctk.set_appearance_mode(new_mode)
+        # Update theme button icon
+        theme_icon_code = "e518" if new_mode == "Light" else "e51c"
+        new_theme_icon = self.get_icon_image(theme_icon_code, (20, 20))
+        if new_theme_icon:
+            self.theme_btn.configure(image=new_theme_icon)
+    
+    def show_history_view(self):
+        """Open the History Window dialog"""
+        HistoryWindow(self)
+
+    def show_settings_view(self):
+        """Open the Settings Window dialog"""
+        SettingsWindow(self)
+    
+    def show_downloads_view(self):
+        """Show downloads view"""
+        self.clear_content()
+        self.show_view("downloads")
+
+    def create_main_content(self):
+        """Create main content area with new design"""
+        # Use frame instead of scrollable frame to prevent always-visible scrollbar
+        main_container = ctk.CTkFrame(self, fg_color=self.bg_color, corner_radius=0)
+        main_container.grid(row=1, column=0, sticky="nsew")
+        main_container.grid_columnconfigure(0, weight=1)
+        main_container.grid_rowconfigure(0, weight=1)
+        
+        # Only use scrollable frame if content exceeds viewport
+        self.main_view = ctk.CTkScrollableFrame(main_container, fg_color=self.bg_color, corner_radius=0)
+        self.main_view.grid(row=0, column=0, sticky="nsew")
+        self.main_view.grid_columnconfigure(0, weight=1)
+
+        content = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        content.grid(row=0, column=0, pady=60, padx=20)
+
+        # 1. Hero
+        hero = ctk.CTkFrame(content, fg_color="transparent")
+        hero.pack(fill="x", pady=(0, 40))
+        title_box = ctk.CTkFrame(hero, fg_color="transparent")
+        title_box.pack()
+        ctk.CTkLabel(title_box, text="VidFetch ", font=self.font_h1, text_color=self.accent_blue, anchor="e").pack(side="left")
+        ctk.CTkLabel(title_box, text="Video Downloader", font=self.font_h1, text_color=self.text_main).pack(side="left")
+        ctk.CTkLabel(hero, text="Download videos and playlists from various platforms in 4K, HD, or MP3 audio instantly.\nNo registration required.",
+                     font=self.font_body, text_color=self.text_secondary, justify="center").pack(pady=15)
+
+        # 2. Input Card with complete border
+        card_container = ctk.CTkFrame(content, fg_color="transparent")
+        card_container.pack(fill="x", padx=10)
+        
+        card = ctk.CTkFrame(card_container, fg_color=self.card_color, corner_radius=20, 
+                           border_width=2, border_color=self.border_color)
+        card.pack(fill="x")
+        
+        # Search Row
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=30, pady=(30, 20))
+        
+        # Input Container - Single Frame with Border
+        input_container = ctk.CTkFrame(row, fg_color="transparent")
+        input_container.pack(side="left", expand=True, fill="x", padx=(0, 15))
+        
+        input_bg = ctk.CTkFrame(input_container, fg_color=self.header_color, 
+                                border_width=1, border_color=self.border_color, 
+                                corner_radius=12, height=54)
+        input_bg.pack(fill="x")
+        input_bg.pack_propagate(False)
+        
+        # Link icon
+        link_icon = self.get_icon_image("e157", (18, 18))
+        if link_icon:
+            ctk.CTkLabel(input_bg, text="", image=link_icon).pack(side="left", padx=15)
+        else:
+            ctk.CTkLabel(input_bg, text="🔗", font=self.font_body, text_color=self.text_secondary).pack(side="left", padx=15)
         
         self.url_var = ctk.StringVar()
-        # Input with icon inside
-        input_container = ctk.CTkFrame(input_frame, fg_color=COLORS["input_bg"], corner_radius=12, border_width=1, border_color=COLORS["input_border"])
-        input_container.pack(side='left', fill='x', expand=True, padx=(0, 16))
-        
-        # Link icon on left
-        icon_label = ctk.CTkLabel(
-            input_container, text="[LINK]",
-            font=("Segoe UI", 10),
-            text_color=COLORS["text_secondary"]
-        )
-        icon_label.pack(side='left', padx=16)
-        
-        self.url_entry = ctk.CTkEntry(
-            input_container, textvariable=self.url_var,
-            placeholder_text="Paste YouTube link here...",
-            font=("Segoe UI", 12),
-            fg_color=COLORS["input_bg"],
-            border_width=0,
-            height=56
-        )
-        self.url_entry.pack(side='left', fill='x', expand=True, padx=8)
+        self.url_entry = ctk.CTkEntry(input_bg, textvariable=self.url_var, placeholder_text="Paste video link here...", 
+                                      border_width=0, fg_color="transparent", font=self.font_body)
+        self.url_entry.pack(side="left", expand=True, fill="both", pady=2)
         self.url_entry.bind('<Return>', lambda e: self.fetch_info())
         
-        paste_btn = ctk.CTkButton(
-            input_container, text="Paste", command=self.paste_from_clipboard,
-            fg_color="transparent",
-            text_color=COLORS["text_secondary"],
-            hover_color=COLORS["input_bg"],
-            font=("Segoe UI", 9),
-            width=60
-        )
-        paste_btn.pack(side='right', padx=8)
+        paste_icon_main = self.get_icon_image("e14f", (18, 18))
+        if paste_icon_main:
+            ctk.CTkButton(input_bg, text="", image=paste_icon_main, width=32, height=32,
+                         corner_radius=8, fg_color="transparent",
+                         hover_color=self.border_color, command=self.paste_clip).pack(side="right", padx=8)
+
+        # Get Video Button
+        btn_container = ctk.CTkFrame(row, fg_color="transparent")
+        btn_container.pack(side="right")
         
-        get_video_btn = ctk.CTkButton(
-            input_frame, text="Get Video", command=self.fetch_info,
-            fg_color=COLORS["primary"],
-            hover_color=COLORS["primary_hover"],
-            font=("Segoe UI", 12, "bold"),
-            height=56,
-            corner_radius=12
-        )
-        get_video_btn.pack(side='left')
+        self.play_icon = self.get_icon_image("e037", (48, 48))
+        self.download_icon = self.get_icon_image("f090", (20, 20))
+        get_video_icon = self.get_icon_image("e8b6", (20, 20))
+
+        self.get_btn = ctk.CTkButton(btn_container, text="Get Video", font=self.font_h2, 
+                                     height=56, width=180, fg_color=self.accent_blue, 
+                                     hover_color="#0d6bc4", corner_radius=12,
+                                     image=get_video_icon, compound="left",
+                                     command=self.fetch_info)
+        self.get_btn.pack()
+
+        # Features Row
+        feats = ctk.CTkFrame(card, fg_color="transparent")
+        feats.pack(pady=(0, 30))
+        check_feature_icon = self.get_icon_image("e876", (16, 16))
+        for txt in ["Unlimited Downloads", "High Speed Converter", "No Registration"]:
+            f = ctk.CTkFrame(feats, fg_color="transparent")
+            f.pack(side="left", padx=15)
+            if check_feature_icon:
+                ctk.CTkLabel(f, text="", image=check_feature_icon).pack(side="left", padx=5)
+            ctk.CTkLabel(f, text=txt, font=self.font_small, text_color=self.text_secondary).pack(side="left")
+
+        # 3. Recents
+        self.create_recents(content)
         
-        # Features
-        features_frame = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
-        features_frame.pack(pady=(0, 24), padx=24)
-        
-        features = [
-            ("✓", "Unlimited Downloads"),
-            ("✓", "High Speed Converter"),
-            ("✓", "No Registration")
-        ]
-        
-        # Features
-        for icon, text in features:
-            feat_frame = ctk.CTkFrame(features_frame, fg_color="transparent", corner_radius=0)
-            feat_frame.pack(side='left', padx=16)
-            
-            ctk.CTkLabel(
-                feat_frame, text="✓",
-                font=("Segoe UI", 16),
-                text_color="#22c55e"
-            ).pack(side='left', padx=(0, 6))
-            
-            ctk.CTkLabel(
-                feat_frame, text=text,
-                font=("Segoe UI", 10),
-                text_color=COLORS["text_secondary"]
-            ).pack(side='left')
-        
-        # Store reference
-        self.home_view = home_view
-        
-        # Results view (initially hidden)
         self.results_view = None
+    
+    def paste_clip(self):
+        """Paste URL from clipboard into the URL entry field"""
+        try:
+            clipboard_text = self.clipboard_get()
+            if clipboard_text:
+                self.url_var.set(clipboard_text)
+        except Exception as e:
+            pass
+    
+    def create_recents(self, parent):
+        """Create recent downloads section"""
+        box = ctk.CTkFrame(parent, fg_color="transparent")
+        box.pack(fill="x", pady=30, padx=10)
+        
+        head = ctk.CTkFrame(box, fg_color="transparent")
+        head.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(head, text="RECENT DOWNLOADS", font=self.font_caps, text_color=self.text_secondary).pack(side="left")
+        
+        # Load recent items from config history
+        recent_items = self.config.get_history()[:3] if hasattr(self.config, 'get_history') else []
+        
+        if recent_items:
+            clear_btn = ctk.CTkButton(head, text="Clear All", width=80, height=28, 
+                                     fg_color="transparent", text_color=self.accent_blue, 
+                                     font=self.font_caps, hover_color=self.card_color)
+            clear_btn.pack(side="right")
+            
+            for item in recent_items:
+                f = ctk.CTkFrame(box, fg_color=self.card_color, height=72, corner_radius=12, 
+                               border_width=1, border_color=self.border_color)
+                f.pack(fill="x", pady=4)
+                f.pack_propagate(False)
 
-    def setup_downloads_view(self):
-        """Setup the downloads view."""
-        downloads_view = ctk.CTkFrame(self.content_area, fg_color=COLORS["background_dark"], corner_radius=0)
+                # Placeholder Icon
+                thumb_icon = self.get_icon_image("e04a", (32, 32))
+                
+                img_l = ctk.CTkLabel(f, text="", width=48, height=48, fg_color=self.bg_color, corner_radius=8,
+                                   image=thumb_icon)
+                img_l.pack(side="left", padx=14, pady=12)
+                
+                info = ctk.CTkFrame(f, fg_color="transparent")
+                info.pack(side="left", fill="both", expand=True, pady=14, padx=8)
+                ctk.CTkLabel(info, text=item.get('title', 'Unknown'), font=self.font_small, text_color=self.text_main, anchor="w").pack(fill="x", anchor="w")
+                ctk.CTkLabel(info, text=f"{item.get('format', 'MP4')} • {item.get('size', 'Unknown')}", font=self.font_caps, text_color=self.text_secondary, anchor="w").pack(fill="x", anchor="w", pady=(2, 0))
+
+                download_btn_icon = self.get_icon_image("e2c7", (20, 20))
+                ctk.CTkButton(f, text="", image=download_btn_icon, width=40, height=40,
+                             corner_radius=10, fg_color="transparent",
+                             hover_color=self.bg_color).pack(side="right", padx=15)
+        else:
+            # Empty state for recents
+            empty = ctk.CTkFrame(box, fg_color=self.card_color, corner_radius=12, 
+                               border_width=1, border_color=self.border_color)
+            empty.pack(fill="x", pady=10)
+            
+            inner = ctk.CTkFrame(empty, fg_color="transparent")
+            inner.pack(pady=30)
+            
+            icon = self.get_icon_image("e889", (48, 48))
+            if icon:
+                ctk.CTkLabel(inner, text="", image=icon).pack(pady=(0, 12))
+            ctk.CTkLabel(inner, text="No Recent Downloads", font=self.font_body, text_color=self.text_main).pack()
+            ctk.CTkLabel(inner, text="Your download history will appear here", 
+                        font=self.font_small, text_color=self.text_secondary).pack(pady=(4, 0))
+    
+    def clear_content(self):
+        """Clear the main content area"""
+        for widget in self.main_view.winfo_children():
+            widget.destroy()
+        # Reset scroll to top
+        try:
+            self.main_view._parent_canvas.yview_moveto(0)
+        except:
+            pass
+    
+    def create_empty_state(self, parent, icon_code, title, description, button_text=None, button_command=None):
+        """Create a consistent empty state UI"""
+        container = ctk.CTkFrame(parent, fg_color=self.card_color, corner_radius=16,
+                                border_width=1, border_color=self.border_color)
+        container.pack(fill="x", pady=20)
         
-        # Container - max-w-[1200px] mx-auto px-6 py-8
-        container = ctk.CTkFrame(downloads_view, fg_color="transparent", corner_radius=0)
-        container.pack(fill='both', expand=True)
+        inner = ctk.CTkFrame(container, fg_color="transparent")
+        inner.pack(pady=60)
         
-        # Main content with gap-8
-        content_frame = ctk.CTkFrame(container, fg_color="transparent", corner_radius=0)
-        content_frame.pack(fill='both', expand=True)
+        # Icon
+        icon = self.get_icon_image(icon_code, (64, 64))
+        if icon:
+            ctk.CTkLabel(inner, text="", image=icon).pack(pady=(0, 20))
         
-        # Page Header & Actions - flex flex-col md:flex-row md:items-end justify-between gap-6
-        header_frame = ctk.CTkFrame(content_frame, fg_color="transparent", corner_radius=0)
-        header_frame.pack(fill='x', pady=(0, 32))
+        # Title
+        ctk.CTkLabel(inner, text=title, font=self.font_h2, text_color=self.text_main).pack()
         
-        # Left side - flex flex-col gap-2
-        title_section = ctk.CTkFrame(header_frame, fg_color="transparent", corner_radius=0)
-        title_section.pack(side='left', anchor='sw')
+        # Description
+        ctk.CTkLabel(inner, text=description, font=self.font_body, 
+                    text_color=self.text_secondary, wraplength=400).pack(pady=(8, 0))
         
-        # Title - text-3xl md:text-4xl font-bold tracking-tight
-        title_row = ctk.CTkFrame(title_section, fg_color="transparent", corner_radius=0)
-        title_row.pack(anchor='w')
+        # Optional action button
+        if button_text and button_command:
+            ctk.CTkButton(inner, text=button_text, font=self.font_body, height=44,
+                         fg_color=self.accent_blue, hover_color="#0d6bc4",
+                         corner_radius=10, command=button_command).pack(pady=(20, 0))
+
+    def show_downloads_view(self):
+        """Show downloads view with new card-based design"""
+        self.clear_content()
         
-        title = ctk.CTkLabel(
-            title_row, text="Active Downloads",
-            font=("Segoe UI", 36, "bold"),
-            text_color=COLORS["text_primary"]
-        )
-        title.pack(side='left')
+        # Main Layout Container (Centered max-width like Results View)
+        layout = ctk.CTkFrame(self.main_view, fg_color="transparent", width=1000)
+        layout.grid(row=0, column=0, pady=40, padx=20)
         
-        count_label = ctk.CTkLabel(
-            title_row, text="(0)",
-            font=("Segoe UI", 36, "bold"),
-            text_color=COLORS["text_secondary"]
-        )
-        count_label.pack(side='left', padx=(8, 0))
-        self.downloads_count_label = count_label
+        # --- Header Section ---
+        header = ctk.CTkFrame(layout, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 32))
         
-        # Subtitle - text-slate-500 dark:text-[#92adc9] text-base
-        subtitle = ctk.CTkLabel(
-            title_section, text="Monitor progress, manage queue, and control speed.",
-            font=("Segoe UI", 14),
-            text_color=COLORS["text_secondary"]
-        )
-        subtitle.pack(anchor='w', pady=(8, 0))
+        # Title Group
+        title_box = ctk.CTkFrame(header, fg_color="transparent")
+        title_box.pack(side="left")
         
-        # Right side - flex items-center gap-3
-        actions_frame = ctk.CTkFrame(header_frame, fg_color="transparent", corner_radius=0)
-        actions_frame.pack(side='right', anchor='se')
+        active_count = len([t for t in self.download_tasks if t.is_downloading or t.is_paused])
+        ctk.CTkLabel(title_box, text=f"Active Downloads ({active_count})", font=self.font_h1, text_color=self.text_main).pack(anchor="w")
+        ctk.CTkLabel(title_box, text="Monitor progress, manage queue, and control speed.", 
+                    font=self.font_body, text_color=self.text_secondary).pack(anchor="w", pady=(4, 0))
         
-        # Pause All button - h-10 px-4 rounded-lg bg-slate-200 dark:bg-[#233648]
-        pause_all_btn = ctk.CTkButton(
-            actions_frame, text="Pause All",
-            command=self.pause_all_downloads,
-            fg_color=COLORS["border"],
-            hover_color=COLORS["input_border"],
-            text_color=COLORS["text_secondary"],
-            font=("Segoe UI", 11)
-        )
-        pause_all_btn.pack(side='left', padx=(0, 12))
+        # Controls
+        controls = ctk.CTkFrame(header, fg_color="transparent")
+        controls.pack(side="right")
         
-        # Resume All button
-        resume_all_btn = ctk.CTkButton(
-            actions_frame, text="Resume All",
-            command=self.resume_all_downloads,
-            fg_color=COLORS["border"],
-            hover_color=COLORS["input_border"],
-            text_color=COLORS["text_secondary"],
-            font=("Segoe UI", 11)
-        )
-        resume_all_btn.pack(side='left')
+        # Pause All
+        pause_all = ctk.CTkButton(controls, text="Pause All", font=self.font_body, height=40,
+                                 fg_color=self.card_color, hover_color=self.border_color, text_color=self.text_main,
+                                 image=self.get_icon_image("e034", (20, 20)), compound="left", cursor="hand2",
+                                 command=self.pause_all_downloads)
+        pause_all.pack(side="left", padx=12)
         
-        # Downloads Table - rounded-xl border border-slate-200 dark:border-slate-700/50 bg-surface-light dark:bg-[#111a22] shadow-sm
-        table_container = ctk.CTkFrame(
-            content_frame, fg_color=COLORS["card"], corner_radius=16,
-            border_width=1, border_color=COLORS["border"]
-        )
-        table_container.pack(fill='both', expand=True)
+        # Resume All
+        resume_all = ctk.CTkButton(controls, text="Resume All", font=self.font_body, height=40,
+                                  fg_color=self.card_color, hover_color=self.border_color, text_color=self.text_main,
+                                  image=self.get_icon_image("e037", (20, 20)), compound="left", cursor="hand2",
+                                  command=self.resume_all_downloads)
+        resume_all.pack(side="left")
+
+        # --- Cards container ---
+        self.downloads_container = ctk.CTkFrame(layout, fg_color="transparent")
+        self.downloads_container.pack(fill="both", expand=True)
         
-        # Table header - bg-slate-50 dark:bg-[#192633] border-b border-slate-200 dark:border-slate-700/50
-        header_row = ctk.CTkFrame(table_container, fg_color=COLORS["card"], corner_radius=0)
-        header_row.pack(fill='x', side='top')
-        
-        # Border bottom
-        header_border = tk.Frame(header_row, height=1)
-        header_border.pack(fill='x', side='bottom')
-        
-        # Headers - px-6 py-4 text-xs font-semibold uppercase tracking-wider
-        headers = [
-            ("Preview", 80),
-            ("Title & Format", 1),
-            ("Progress", 1),
-            ("Stats", 120),
-            ("Actions", 100)
-        ]
-        
-        for i, (text, weight) in enumerate(headers):
-            anchor = 'w' if i == 0 else ('e' if i == len(headers) - 1 else 'w')
-            header_cell = ctk.CTkLabel(
-                header_row, text=text.upper(),
-                font=("Segoe UI", 9, "bold"),
-                text_color=COLORS["text_secondary"],
-                anchor=anchor
+        if self.download_tasks:
+            for task in self.download_tasks:
+                item = DownloadItem(self.downloads_container, task)
+                item.pack(fill='x', pady=8)
+        else:
+            self.create_empty_state(
+                self.downloads_container,
+                icon_code="f090",
+                title="No Active Downloads",
+                description="Your download queue is empty. Paste a video URL on the home page to start downloading."
             )
-            if weight == 1:
-                header_cell.pack(side='left', fill='x', expand=True)
-            else:
-                header_cell.pack(side='left')
         
-        # Scrollable frame for downloads
-        downloads_wrapper = ctk.CTkFrame(table_container, fg_color="transparent", corner_radius=0)
-        downloads_wrapper.pack(fill='both', expand=True)
-        
-        canvas = tk.Canvas(downloads_wrapper, highlightthickness=0, bg=COLORS["card"])
-        scrollbar = ttk.Scrollbar(downloads_wrapper, orient="vertical", command=canvas.yview)
-        self.downloads_container = tk.Frame(canvas, bg=COLORS["card"])
-        
-        self.downloads_container.bind(
-            "<Configure>", 
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        canvas.create_window((0, 0), window=self.downloads_container, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        canvas.bind('<Configure>', lambda e: canvas.itemconfig(canvas.find_all()[0], width=e.width))
-        
-        self.downloads_view = downloads_view
-        self.downloads_canvas = canvas
 
-    def setup_settings_modal(self):
-        """Setup the settings modal."""
-        self.settings_modal = ctk.CTkToplevel(self)
-        self.settings_modal.title("Settings")
-        self.settings_modal.geometry("500x300")
-        self.settings_modal.withdraw()  # Hide initially
-        self.settings_modal.transient(self)
-        # Don't call grab_set() on a withdrawn window - will do it when showing
+
+        # --- Footer ---
+        footer = ctk.CTkFrame(layout, fg_color="transparent")
+        footer.pack(fill="x", pady=40)
+        ctk.CTkFrame(footer, height=1, fg_color=self.border_color).pack(fill="x", pady=(0, 20))
         
-        # Make it modal-like
-        self.settings_modal.protocol("WM_DELETE_WINDOW", self.close_settings)
+        foot_row = ctk.CTkFrame(footer, fg_color="transparent")
+        foot_row.pack(fill="x")
+        ctk.CTkLabel(foot_row, text="Storage: 124GB Free of 500GB", font=self.font_small, text_color=self.text_secondary).pack(side="left")
+        ctk.CTkLabel(foot_row, text=f"VidFetch v{__version__}", font=self.font_small, text_color=self.text_secondary).pack(side="right")
+
+    def create_download_card(self, parent, data):
+        """Create a styled download card"""
+        is_completed = data.get("status") == "completed"
         
-        # Header
-        header = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
-        header.pack(fill='x', pady=24, padx=24)
+        # Theme-aware colors
+        border_col = self.col_success if is_completed else self.border_color
         
-        title = ctk.CTkLabel(
-            header, text="Settings", font=("Segoe UI", 20, "bold")
-        )
-        title.pack(side='left')
+        # Outer Card
+        card = ctk.CTkFrame(parent, fg_color=self.card_color, corner_radius=12, border_width=1, border_color=border_col)
+        card.pack(fill="x", pady=8)
         
-        close_btn = ctk.CTkButton(
-            header, text="✕", command=self.close_settings, width=30, height=30
-        )
-        close_btn.pack(side='right')
+        # Inner Content Wrapper
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=4, pady=4)
         
-        # Content
-        content = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
-        content.pack(fill='both', expand=True, padx=24, pady=16)
+        # --- 1. Thumbnail ---
+        thumb_box = ctk.CTkFrame(inner, fg_color="transparent", width=144, height=81)
+        thumb_box.pack(side="left", padx=(12, 16), pady=12)
+        thumb_box.pack_propagate(False)
         
-        # Download path
-        path_frame = ctk.CTkFrame(content, fg_color="transparent")
-        path_frame.pack(fill='x', pady=(0, 16))
+        # Thumbnail Content
+        thumb = ctk.CTkFrame(thumb_box, fg_color=data.get("bg_color", "#333"), corner_radius=8)
+        thumb.pack(fill="both", expand=True)
         
-        ctk.CTkLabel(
-            path_frame, text="Download Path", font=("Segoe UI", 11)
-        ).pack(anchor='w', pady=(0, 8))
+        if "format" in data:
+            ctk.CTkLabel(thumb, text=data["format"], font=("Helvetica", 10, "bold"), 
+                        fg_color="#000000", text_color="white", corner_radius=4).place(relx=0.96, rely=0.94, anchor="se")
+            
+        if is_completed:
+            check_icon = self.get_icon_image("e876", (14, 14))
+            if check_icon:
+                check_label = ctk.CTkLabel(thumb, text="", image=check_icon,
+                                          fg_color="#22c55e", width=20, height=20, corner_radius=10)
+                check_label.place(relx=0.96, rely=0.06, anchor="ne")
+            
+        if data.get("status") != "completed" and data.get("is_playlist"):
+            playlist_icon = self.get_icon_image("e05f", (14, 14))
+            if playlist_icon:
+                playlist_label = ctk.CTkLabel(thumb, text="", image=playlist_icon,
+                                            fg_color="#000000", width=24, height=20, corner_radius=4)
+                playlist_label.place(relx=0.04, rely=0.06, anchor="nw")
+
+        # --- 2. Actions (placed on right) ---
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+        actions.pack(side="right", padx=(0, 16), fill="y")
         
-        path_input_frame = ctk.CTkFrame(path_frame, fg_color="transparent")
-        path_input_frame.pack(fill='x')
+        ctk.CTkFrame(actions, width=1, fg_color=self.border_color, height=40).pack(side="left", fill="y", padx=(0, 16), pady=20)
         
-        self.path_var = tk.StringVar(value=str(self.config.download_path))
-        path_entry = ctk.CTkEntry(
-            path_input_frame, textvariable=self.path_var,
-            font=("Segoe UI", 10)
-        )
-        path_entry.pack(side='left', fill='x', expand=True, padx=(0, 8))
+        if is_completed:
+            folder_icon = self.get_icon_image("e2c8", (20, 20))
+            play_icon = self.get_icon_image("e037", (20, 20))
+            ctk.CTkButton(actions, text="", image=folder_icon, width=40, height=40,
+                         fg_color="transparent", hover_color="#14532d", cursor="hand2").pack(side="left", padx=4)
+            ctk.CTkButton(actions, text="", image=play_icon, width=40, height=40,
+                         fg_color="transparent", hover_color=self.col_primary, cursor="hand2").pack(side="left", padx=4)
+        else:
+            pause_icon = self.get_icon_image("e034", (20, 20))
+            close_icon = self.get_icon_image("e5cd", (20, 20))
+            ctk.CTkButton(actions, text="", image=pause_icon, width=40, height=40,
+                         fg_color="transparent", hover_color=self.col_primary, cursor="hand2").pack(side="left", padx=4)
+            ctk.CTkButton(actions, text="", image=close_icon, width=40, height=40,
+                         fg_color="transparent", hover_color="#7f1d1d", cursor="hand2").pack(side="left", padx=4)
+
+        # --- 3. Info ---
+        info = ctk.CTkFrame(inner, fg_color="transparent")
+        info.pack(side="left", fill="both", expand=True, pady=12)
         
-        browse_btn = ctk.CTkButton(
-            path_input_frame, text="Change", command=self.browse_download_path
-        )
-        browse_btn.pack(side='left')
+        row1 = ctk.CTkFrame(info, fg_color="transparent")
+        row1.pack(fill="x", pady=(0, 4))
         
-        # Footer
-        footer = ctk.CTkFrame(self.settings_modal, fg_color="transparent")
-        footer.pack(fill='x', side='bottom', pady=16, padx=24)
+        ctk.CTkLabel(row1, text=data["title"], font=self.font_h2, text_color=self.text_main).pack(side="left", padx=(0, 12))
         
-        save_btn = ctk.CTkButton(
-            footer, text="Save Changes", command=self.save_settings
-        )
-        save_btn.pack(side='right')
+        if "tags" in data:
+            for tag in data["tags"]:
+                is_success = tag == "Completed"
+                tag_bg = "#14532d" if is_success else self.bg_color
+                tag_fg = "#4ade80" if is_success else self.text_secondary
+                ctk.CTkLabel(row1, text=tag, font=("Helvetica", 10, "bold"), fg_color=tag_bg, 
+                            text_color=tag_fg, corner_radius=6, padx=8, pady=2).pack(side="left", padx=4)
+
+        if "subtitle" in data:
+             ctk.CTkLabel(row1, text=data["subtitle"], font=self.font_small, text_color=self.text_secondary).pack(side="left", padx=8)
+
+        row2 = ctk.CTkFrame(info, fg_color="transparent")
+        row2.pack(fill="x", pady=(8, 0))
+        
+        meta_top = ctk.CTkFrame(row2, fg_color="transparent")
+        meta_top.pack(fill="x", pady=(0, 4))
+        
+        prog = data.get("progress", 0)
+        col = self.col_primary if not is_completed else self.col_success
+        ctk.CTkLabel(meta_top, text=f"{int(prog*100)}%", font=("Helvetica", 12, "bold"), text_color=col).pack(side="left")
+        
+        stats = ctk.CTkFrame(meta_top, fg_color="transparent")
+        stats.pack(side="right")
+        
+        # Stats Icons/Text
+        s_icon_code = "e1db" if is_completed else "f090"
+        s_val = data.get("size") if is_completed else data.get("speed")
+        t_icon_code = "e916" if is_completed else "e8b5"
+        t_val = data.get("date") if is_completed else data.get("left")
+        
+        if s_val:
+            s_icon_img = self.get_icon_image(s_icon_code, (14, 14))
+            if s_icon_img:
+                ctk.CTkLabel(stats, text="", image=s_icon_img).pack(side="left", padx=(0,4))
+            ctk.CTkLabel(stats, text=s_val, font=self.font_small, text_color=self.text_secondary).pack(side="left", padx=(0,12))
+        if t_val:
+            t_icon_img = self.get_icon_image(t_icon_code, (14, 14))
+            if t_icon_img:
+                ctk.CTkLabel(stats, text="", image=t_icon_img).pack(side="left", padx=(0,4))
+            ctk.CTkLabel(stats, text=t_val, font=self.font_small, text_color=self.text_secondary).pack(side="left")
+
+        progress_bar = ctk.CTkProgressBar(row2, height=6, corner_radius=3, progress_color=col, fg_color=self.border_color)
+        progress_bar.pack(fill="x")
+        progress_bar.set(prog)
 
     def show_view(self, view_name: str):
         """Show a specific view."""
         self.current_view = view_name
         
-        # Hide all views
-        for widget in self.content_area.winfo_children():
-            widget.pack_forget()
-        
         if view_name == "home":
-            self.home_view.pack(fill='both', expand=True)
+            self.clear_content()
+            self.create_main_content()
         elif view_name == "results":
-            if self.results_view:
-                self.results_view.pack(fill='both', expand=True)
+            # Results view is created dynamically in show_single/show_playlist
+            pass
         elif view_name == "downloads":
-            self.downloads_view.pack(fill='both', expand=True)
+            self.show_downloads_view()
             self.update_downloads_display()
 
     def on_format_change(self, format_type: str):
@@ -550,13 +1270,24 @@ class VidFetchApp(ctk.CTk):
         self.format_mode = format_type
 
     def paste_from_clipboard(self):
-        """Paste from clipboard."""
-        try:
-            clipboard_text = self.clipboard_get()
-            self.url_var.set(clipboard_text)
-            self.url_entry.configure()
-        except Exception:
-            pass
+        """Paste from clipboard (alias for paste_clip for compatibility)."""
+        self.paste_clip()
+    
+    def create_footer(self):
+        """Create footer"""
+        f = ctk.CTkFrame(self, height=40, corner_radius=0, fg_color="transparent")
+        f.grid(row=2, column=0, sticky="ew")
+        f.pack_propagate(False)
+        
+        ctk.CTkLabel(f, text="© 2024 VidFetch. All rights reserved.", 
+                    font=self.font_small, text_color=self.text_secondary).pack(side="left", padx=40, pady=6)
+        
+        link_box = ctk.CTkFrame(f, fg_color="transparent")
+        link_box.pack(side="right", padx=40, pady=6)
+        for t in ["Terms of Service", "Privacy Policy", "Support"]:
+            ctk.CTkButton(link_box, text=t, fg_color="transparent", 
+                         text_color=self.text_secondary, width=120, height=28,
+                         font=self.font_small, hover_color=self.card_color).pack(side="left", padx=4)
 
     def fetch_info(self):
         """Fetch video/playlist information."""
@@ -575,30 +1306,39 @@ class VidFetchApp(ctk.CTk):
 
     def show_loading(self):
         """Show loading overlay."""
+        # Check if overlay exists and is valid
+        if hasattr(self, 'loading_overlay'):
+            try:
+                if not self.loading_overlay.winfo_exists():
+                    delattr(self, 'loading_overlay')
+            except:
+                delattr(self, 'loading_overlay')
+        
         if not hasattr(self, 'loading_overlay'):
-            self.loading_overlay = tk.Frame(
-                self.content_area, highlightthickness=2
-            )
-            self.loading_overlay.place(relx=0.5, rely=0.5, anchor='center')
+            # Create on self (main window) instead of main_view which gets cleared
+            self.loading_overlay = ctk.CTkFrame(self, fg_color=self.bg_color, corner_radius=16)
             
-            spinner = tk.Label(
+            spinner = ctk.CTkLabel(
                 self.loading_overlay, text="⏳",
-                font=("Segoe UI", 48)
+                font=("Helvetica", 48), text_color=self.text_main
             )
             spinner.pack(pady=20)
             
-            loading_text = tk.Label(
-                self.loading_overlay, text="Analyzing URL...", font=("Segoe UI", 18, "bold")
+            loading_text = ctk.CTkLabel(
+                self.loading_overlay, text="Analyzing URL...", font=self.font_h2, text_color=self.text_main
             )
-            loading_text.pack()
+            loading_text.pack(pady=(0, 20))
         
         self.loading_overlay.place(relx=0.5, rely=0.5, anchor='center')
         self.loading_overlay.lift()
 
     def hide_loading(self):
         """Hide loading overlay."""
-        if hasattr(self, 'loading_overlay'):
-            self.loading_overlay.place_forget()
+        if hasattr(self, 'loading_overlay') and self.loading_overlay.winfo_exists():
+            try:
+                self.loading_overlay.place_forget()
+            except:
+                pass
 
     def _fetch_worker(self, url: str):
         """Worker thread for fetching metadata."""
@@ -608,7 +1348,14 @@ class VidFetchApp(ctk.CTk):
         except Exception as e:
             self.after(0, lambda: messagebox.showerror("Error", str(e)))
         finally:
-            self.after(0, lambda: self.url_entry.configure(state='normal'))
+            # Safely re-enable URL entry if it still exists
+            def safe_enable():
+                if hasattr(self, 'url_entry') and self.url_entry.winfo_exists():
+                    try:
+                        self.url_entry.configure(state='normal')
+                    except:
+                        pass
+            self.after(0, safe_enable)
             self.after(0, self.hide_loading)
 
     def handle_fetch_result(self, result):
@@ -620,220 +1367,213 @@ class VidFetchApp(ctk.CTk):
             self.current_metadata = result
             self.show_single(result)
         
-        self.show_view("results")
+        # Results view is created in show_single/show_playlist, no need to call show_view
 
     def show_single(self, meta: VideoMetadata):
-        """Show single video information."""
-        # Clear previous results view
-        if self.results_view:
-            self.results_view.destroy()
+        """Show single video information with new design."""
+        self.clear_content()
+        self.current_metadata = meta
         
-        # Container
-        self.results_view = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        self.results_view.pack(fill='both', expand=True, padx=16, pady=48)
-        container = ctk.CTkFrame(self.results_view, fg_color="transparent")
-        container.pack(fill='both', expand=True)
+        # Web Container: Centered, fixed width layout
+        content = ctk.CTkFrame(self.main_view, fg_color="transparent", width=1000)
+        content.grid(row=0, column=0, pady=40, padx=20)
+        content.grid_columnconfigure(0, weight=1)
+
+        # 1. Search Bar (Full Width)
+        search_row = ctk.CTkFrame(content, fg_color="transparent", width=1000)
+        search_row.pack(fill="x", pady=(0, 30))
         
-        # Mini search bar
-        search_frame = ctk.CTkFrame(container, fg_color="transparent")
-        search_frame.pack(fill='x', pady=(0, 32))
+        # Input Container
+        input_container = ctk.CTkFrame(search_row, fg_color="transparent")
+        input_container.pack(side="left", fill="x", expand=True, padx=(0, 15))
         
-        # Input container with icon - flex-1
-        input_container = ctk.CTkFrame(search_frame)
-        input_container.pack(side='left', fill='x', expand=True, padx=(0, 12))
+        input_bg = ctk.CTkFrame(input_container, fg_color=self.header_color, 
+                                border_width=1, border_color=self.border_color,
+                                corner_radius=12, height=54)
+        input_bg.pack(fill="x")
+        input_bg.pack_propagate(False)
         
-        # Link icon on left - absolute positioned in HTML
-        icon_label = ctk.CTkLabel(
-            input_container, text="🔗", font=("Segoe UI", 12)
-        )
-        icon_label.pack(side='left', padx=16)
+        # Link icon
+        link_icon_search = self.get_icon_image("e157", (18, 18))
+        if link_icon_search:
+            ctk.CTkLabel(input_bg, text="", image=link_icon_search).pack(side="left", padx=15)
+        else:
+            ctk.CTkLabel(input_bg, text="🔗", font=self.font_body, text_color=self.text_secondary).pack(side="left", padx=15)
         
-        search_entry = ctk.CTkEntry(
-            input_container,
-            font=("Segoe UI", 11)
-        )
-        search_entry.pack(side='left', fill='x', expand=True, padx=(0, 12), pady=8)
+        search_entry = ctk.CTkEntry(input_bg, placeholder_text="Paste another video link...", 
+                                      border_width=0, fg_color="transparent", font=self.font_body)
+        search_entry.pack(side="left", expand=True, fill="both", pady=2)
         search_entry.insert(0, meta.original_url)
         search_entry.bind('<Return>', lambda e: self._search_from_entry(search_entry.get()))
         
-        # Search button - h-12 px-6 rounded-xl
-        search_btn = ctk.CTkButton(
-            search_frame, text="Search", command=lambda: self._search_from_entry(search_entry.get())
-        )
-        search_btn.pack(side='left')
+        # Paste Button
+        paste_icon_search = self.get_icon_image("e14f", (18, 18))
+        if paste_icon_search:
+            def paste_search():
+                try:
+                    clipboard_text = self.clipboard_get()
+                    if clipboard_text:
+                        search_entry.delete(0, 'end')
+                        search_entry.insert(0, clipboard_text)
+                except Exception as e:
+                    pass
+            
+            ctk.CTkButton(input_bg, text="", image=paste_icon_search, width=32, height=32,
+                         corner_radius=8, fg_color="transparent",
+                         hover_color=self.border_color, command=paste_search).pack(side="right", padx=8)
+
+        # Search Button
+        search_icon = self.get_icon_image("e8b6", (20, 20))
+        ctk.CTkButton(search_row, text="Search", font=self.font_h2, 
+                      height=56, width=140, fg_color=self.accent_blue, 
+                      hover_color="#0d6bc4", corner_radius=12,
+                      image=search_icon, compound="left",
+                      command=lambda: self._search_from_entry(search_entry.get())).pack(side="right")
+
+        # 2. Results Header
+        header_row = ctk.CTkFrame(content, fg_color="transparent")
+        header_row.pack(fill="x", pady=(0, 20))
+        ctk.CTkLabel(header_row, text="Search Results", font=self.font_h2, text_color=self.text_main).pack(side="left")
         
-        # Results header
-        header_frame = ctk.CTkFrame(container, fg_color="transparent")
-        header_frame.pack(fill='x', pady=(0, 24))
+        status = ctk.CTkFrame(header_row, fg_color="transparent")
+        status.pack(side="right")
+        check_icon_status = self.get_icon_image("e876", (16, 16))
+        if check_icon_status:
+            ctk.CTkLabel(status, text="", image=check_icon_status).pack(side="left", padx=5)
+        ctk.CTkLabel(status, text="Ready to download", font=self.font_small, text_color=self.text_secondary).pack(side="left")
+
+        # 3. Main Video Card
+        self.create_video_card(content, meta)
         
-        # Title - text-2xl font-bold tracking-tight
-        ctk.CTkLabel(
-            header_frame, text="Search Results", font=("Segoe UI", 24, "bold")
-        ).pack(side='left')
+        # 4. Playlist Section (if applicable - not shown for single videos)
+        # self.create_playlist_section(content)
+    
+    def create_video_card(self, parent, meta: VideoMetadata):
+        """Create video card with new design"""
+        card = ctk.CTkFrame(parent, fg_color=self.card_color, corner_radius=16, 
+                           border_width=1, border_color=self.border_color)
+        card.pack(fill="x", pady=(0, 40))
         
-        # Status indicator on right - flex items-center gap-4
-        status_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        status_frame.pack(side='right')
+        # Grid layout
+        card.grid_columnconfigure(0, weight=0)  # Fixed width for thumbnail
+        card.grid_columnconfigure(1, weight=1)  # Info side stretches
         
-        status_label = ctk.CTkLabel(
-            status_frame, text="✓ Ready to download", font=("Segoe UI", 11)
-        )
-        status_label.pack(side='left')
+        # --- LEFT COLUMN: Thumbnail & Channel ---
+        left_col = ctk.CTkFrame(card, fg_color="transparent")
+        left_col.grid(row=0, column=0, padx=24, pady=24, sticky="n")
         
-        # Main card - bg-white dark:bg-[#192633]/80 border border-gray-200 dark:border-[#233648] rounded-2xl
-        card = ctk.CTkFrame(container)
-        card.pack(fill='x')
-        
-        # Grid layout: lg:grid-cols-12, lg:col-span-5 for thumbnail, lg:col-span-7 for options
-        # Thumbnail column - lg:col-span-5 bg-black/5 dark:bg-black/20 p-6
-        thumb_frame = ctk.CTkFrame(card, fg_color="#1a1a1a", width=400)  # black/20 equivalent
-        thumb_frame.pack(side='left', fill='y', padx=24, pady=24)
+        # Thumbnail Container - 16:9 Aspect Ratio (320x180)
+        thumb_width, thumb_height = 320, 180
+        thumb_frame = ctk.CTkFrame(left_col, width=thumb_width, height=thumb_height, 
+                                   fg_color="#1f2937", corner_radius=12)
+        thumb_frame.pack(pady=(0, 16))
         thumb_frame.pack_propagate(False)
         
-        # Thumbnail container - rounded-xl overflow-hidden shadow-lg aspect-video
-        thumb_container = ctk.CTkFrame(thumb_frame, fg_color="black")
-        thumb_container.pack(expand=True, fill='both')
-        
-        # Thumbnail label - make sure it's visible and properly sized
-        self.result_thumb = ctk.CTkLabel(
-            thumb_container, fg_color="black", 
-            anchor='center',
-            text="Loading thumbnail...",
-            text_color="white",
-            font=("Segoe UI", 10)
-        )
+        # Thumbnail label
+        self.result_thumb = ctk.CTkLabel(thumb_frame, fg_color="#1f2937", 
+                                        anchor='center', text="Loading...",
+                                        text_color="white", font=self.font_small)
         self.result_thumb.pack(expand=True, fill='both')
-        self.result_thumb.image = None  # Keep reference to prevent garbage collection
+        self.result_thumb.image = None
         
-        # Info column - lg:col-span-7 p-6 md:p-8
-        info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        info_frame.pack(side='left', fill='both', expand=True, padx=32, pady=24)
+        # Play Button (Icon Button)
+        play_icon_large = self.get_icon_image("e039", (64, 64))
+        if play_icon_large:
+            play_btn = ctk.CTkButton(thumb_frame, text="", image=play_icon_large,
+                                 fg_color="transparent", hover_color="#374151",
+                                     width=64, height=64)
+            play_btn.place(relx=0.5, rely=0.5, anchor="center")
         
-        # Title - text-xl md:text-2xl font-bold mb-2
-        title_label = ctk.CTkLabel(
-            info_frame, text=meta.title, font=("Segoe UI", 22, "bold"),
-            wraplength=600, justify='left', anchor='w'
-        )
-        title_label.pack(anchor='w', pady=(0, 8))
+        # Duration Badge
+        self.create_time_badge(thumb_frame, format_duration(meta.duration)).place(relx=0.96, rely=0.94, anchor="se")
+
+        # Channel Row (simplified - no channel info in metadata)
+        chan_row = ctk.CTkFrame(left_col, fg_color="transparent")
+        chan_row.pack(fill="x")
         
-        # Meta info - text-xs font-medium gap-4 mb-6
-        meta_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        meta_frame.pack(anchor='w', pady=(0, 24))
+        # Avatar
+        avatar = ctk.CTkLabel(chan_row, text="Y", font=self.font_h2, width=40, height=40,
+                             fg_color=self.border_color, text_color=self.accent_blue, corner_radius=20)
+        avatar.pack(side="left")
         
-        ctk.CTkLabel(
-            meta_frame, text=f"Duration: {format_duration(meta.duration)}", font=("Segoe UI", 10)
-        ).pack(side='left')
+        # Channel Details
+        chan_info = ctk.CTkFrame(chan_row, fg_color="transparent")
+        chan_info.pack(side="left", padx=12)
+        ctk.CTkLabel(chan_info, text="YouTube", font=self.font_body, text_color=self.text_main).pack(anchor="w")
+        ctk.CTkLabel(chan_info, text="Video", font=self.font_caps, text_color=self.text_secondary).pack(anchor="w")
         
-        ctk.CTkLabel(
-            meta_frame, text=" • ", font=("Segoe UI", 10)
-        ).pack(side='left')
+        # --- RIGHT COLUMN: Info & Actions ---
+        right_col = ctk.CTkFrame(card, fg_color="transparent")
+        right_col.grid(row=0, column=1, padx=24, pady=24, sticky="nsew")
         
-        ctk.CTkLabel(
-            meta_frame, text="YouTube", font=("Segoe UI", 10)
-        ).pack(side='left')
+        # Title
+        ctk.CTkLabel(right_col, text=meta.title, 
+                    font=self.font_h2, text_color=self.text_main, wraplength=500, justify="left").pack(anchor="w", pady=(0, 8))
         
-        # Quality options (scrollable) - fixed height so download button is visible
-        quality_frame = ctk.CTkFrame(info_frame, height=200)
-        quality_frame.pack(fill='x', pady=(0, 8))
-        quality_frame.pack_propagate(False)
+        # Metadata
+        meta_row = ctk.CTkFrame(right_col, fg_color="transparent")
+        meta_row.pack(anchor="w", pady=(0, 24))
+        ctk.CTkLabel(meta_row, text=f"Duration: {format_duration(meta.duration)}", font=self.font_small, text_color=self.text_secondary).pack(side="left", padx=(0,10))
+        ctk.CTkLabel(meta_row, text="•", font=self.font_small, text_color=self.text_secondary).pack(side="left", padx=(0,10))
+        ctk.CTkLabel(meta_row, text="YouTube", font=self.font_small, text_color=self.text_secondary).pack(side="left")
+
+        # Quality Selector
+        ctk.CTkLabel(right_col, text="Select Quality", font=self.font_caps, text_color=self.text_secondary).pack(anchor="w", pady=(0, 8))
         
-        quality_canvas = tk.Canvas(quality_frame, highlightthickness=0, height=200, bg=COLORS["card"])
-        quality_scroll = ttk.Scrollbar(quality_frame, orient="vertical", command=quality_canvas.yview)
-        quality_inner = tk.Frame(quality_canvas, bg=COLORS["card"])
-        
-        quality_inner.bind("<Configure>", lambda e: quality_canvas.configure(scrollregion=quality_canvas.bbox("all")))
-        quality_canvas.create_window((0, 0), window=quality_inner, anchor="nw")
-        quality_canvas.configure(yscrollcommand=quality_scroll.set)
-        
-        quality_canvas.pack(side="left", fill="both", expand=True)
-        quality_scroll.pack(side="right", fill="y")
-        
-        # Quality options
-        self.quality_var = tk.StringVar()
+        # Build quality options
+        quality_options = []
         self.quality_map = {}
-        opts = []
+        self.quality_var = ctk.StringVar()
         
         for fmt in sorted(meta.formats, key=lambda f: (f.resolution if f.resolution != 'N/A' else '0x0'), reverse=True):
-            # Only show video formats (video-only or combined video+audio)
-            if fmt.vcodec == 'none':
-                continue
-            if fmt.resolution == 'N/A':
-                continue
-            # Skip formats without URLs
-            if not fmt.url:
+            if fmt.vcodec == 'none' or fmt.resolution == 'N/A' or not fmt.url:
                 continue
             
-            label = f"{fmt.resolution} ({fmt.ext})"
-            if label not in self.quality_map:
-                self.quality_map[label] = fmt
-                opts.append(label)
-                
-                # Radio button option - use tk.Frame for canvas compatibility
-                opt_frame = tk.Frame(quality_inner, bg=COLORS["card"], padx=12, pady=12)
-                opt_frame.pack(fill='x', pady=2)
-                
-                rb = ctk.CTkRadioButton(
-                    opt_frame, text="", variable=self.quality_var, value=label
-                )
-                rb.pack(side='left', padx=(0, 12))
-                
-                # Quality info
-                quality_info_frame = ctk.CTkFrame(opt_frame, fg_color="transparent")
-                quality_info_frame.pack(side='left', fill='x', expand=True)
-                
-                # Extract resolution text - convert "854x480" to "480p" or use note if available
-                res_text = fmt.note if fmt.note and fmt.note != 'N/A' else fmt.resolution
-                if 'x' in res_text:
-                    parts = res_text.split('x')
-                    if len(parts) == 2:
-                        res_text = f"{parts[1]}p"
-                elif res_text and not res_text.endswith('p'):
-                    res_text = f"{res_text}p"
-                
-                # Quality row - font-bold text-sm with HD badge
-                quality_row = ctk.CTkFrame(quality_info_frame, fg_color="transparent")
-                quality_row.pack(anchor='w')
-                
-                quality_label = ctk.CTkLabel(
-                    quality_row, text=res_text, font=("Segoe UI", 11, "bold")
-                )
-                quality_label.pack(side='left')
-                
-                # Add HD badge for high quality - bg-primary/10 text-primary text-[10px]
-                if '1080' in res_text or '720' in res_text or '1080' in fmt.resolution or '720' in fmt.resolution:
-                    hd_badge = ctk.CTkLabel(
-                        quality_row, text="HD",
-                        text_color="white", font=("Segoe UI", 8, "bold"),
-                        padx=6, pady=2, fg_color=COLORS["primary"]
-                    )
-                    hd_badge.pack(side='left', padx=(8, 0))
-                
-                # Format label - text-xs text-gray-500
-                format_label = ctk.CTkLabel(
-                    quality_info_frame, text=fmt.ext.upper(), font=("Segoe UI", 9)
-                )
-                format_label.pack(anchor='w', pady=(2, 0))
-                
-                # Size label - text-sm font-medium on right
-                filesize_mb = (fmt.filesize / (1024*1024)) if fmt.filesize and fmt.filesize > 0 else 0.0
-                size_text = f"{filesize_mb:.1f} MB" if filesize_mb > 0 else "Unknown"
-                size_label = ctk.CTkLabel(
-                    opt_frame, text=size_text,
-                    font=("Segoe UI", 11)
-                )
-                size_label.pack(side='right')
+            filesize_mb = (fmt.filesize / (1024*1024)) if fmt.filesize and fmt.filesize > 0 else 0.0
+            size_text = f"{filesize_mb:.1f} MB" if filesize_mb > 0 else "Unknown"
+            
+            # Extract resolution text
+            res_text = fmt.note if fmt.note and fmt.note != 'N/A' else fmt.resolution
+            if 'x' in res_text:
+                parts = res_text.split('x')
+                if len(parts) == 2:
+                    res_text = f"{parts[1]}p"
+            elif res_text and not res_text.endswith('p'):
+                res_text = f"{res_text}p"
+            
+            label = f"{res_text} • {size_text} • {fmt.ext.upper()}"
+            self.quality_map[label] = fmt
+            quality_options.append(label)
         
-        if opts:
-            self.quality_var.set(opts[0])
+        if quality_options:
+            self.quality_var.set(quality_options[0])
+            quality_menu = ctk.CTkOptionMenu(right_col, values=quality_options,
+                                            variable=self.quality_var,
+                                            font=self.font_body, 
+                                            fg_color=self.bg_color, button_color=self.bg_color,
+                                            button_hover_color=self.border_color,
+                                            text_color=self.text_main,
+                                            height=48, anchor="w", corner_radius=12)
+            quality_menu.pack(fill="x", pady=(0, 40))
         
-        # Download button
-        download_btn = ctk.CTkButton(
-            info_frame, text="Download Video", command=self.add_single
-        )
-        download_btn.pack(fill='x', pady=8)
+        # Download Button
+        dl_btn = ctk.CTkButton(right_col, text="Download Video", font=self.font_h2, 
+                              height=56, fg_color=self.accent_blue, hover_color="#0d6bc4", 
+                              corner_radius=12, image=self.download_icon, compound="left",
+                              command=self.add_single)
+        dl_btn.pack(fill="x")
+        
+        ctk.CTkLabel(right_col, text="By downloading you agree to our Terms of Service", 
+                    font=self.font_caps, text_color=self.text_secondary).pack(pady=(12, 0))
         
         # Load thumbnail
         threading.Thread(target=self._load_result_thumb, args=(meta.thumbnail_url,), daemon=True).start()
+    
+    def create_time_badge(self, parent, text):
+        """Create YouTube-style time badge"""
+        badge = ctk.CTkFrame(parent, fg_color="black", corner_radius=6)
+        ctk.CTkLabel(badge, text=text, font=self.font_caps, text_color="white").pack(padx=6, pady=2)
+        return badge
     
     def _search_from_entry(self, url: str):
         """Handle search from the results page search bar."""
@@ -842,62 +1582,70 @@ class VidFetchApp(ctk.CTk):
             self.fetch_info()
 
     def show_playlist(self, playlist: PlaylistMetadata):
-        """Show playlist information."""
-        # Similar to show_single but for playlists
-        # For now, show a simplified version
-        if self.results_view:
-            self.results_view.destroy()
+        """Show playlist information with new design matching the image."""
+        self.clear_content()
+        self.current_playlist = playlist
         
-        self.results_view = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        self.results_view.pack(fill='both', expand=True, padx=24, pady=32)
+        # Container
+        container = ctk.CTkFrame(self.main_view, fg_color="transparent", width=1000)
+        container.grid(row=0, column=0, pady=40, padx=20)
+        container.grid_columnconfigure(0, weight=1)
         
-        header = ctk.CTkLabel(
-            self.results_view, text=f"{playlist.title} ({len(playlist.entries)} videos)",
-            font=("Segoe UI", 20, "bold")
-        )
-        header.pack(anchor='w', pady=(0, 16))
+        # Header with title
+        header = ctk.CTkFrame(container, fg_color="transparent")
+        header.pack(fill='x', pady=(0, 24))
         
-        # Playlist items
-        list_frame = ctk.CTkFrame(self.results_view, fg_color="transparent")
+        ctk.CTkLabel(
+            header, text=f"{playlist.title} ({len(playlist.entries)} videos)",
+            font=self.font_h1, text_color=self.text_main
+        ).pack(anchor='w')
+        
+        # Playlist items in a card
+        list_card = ctk.CTkFrame(container, fg_color=self.card_color, corner_radius=16,
+                                border_width=1, border_color=self.border_color)
+        list_card.pack(fill='both', expand=True, pady=(0, 24))
+        
+        # Scrollable frame for playlist items
+        list_frame = ctk.CTkScrollableFrame(list_card, fg_color="transparent")
         list_frame.pack(fill='both', expand=True, padx=16, pady=16)
-        
-        canvas = tk.Canvas(list_frame, highlightthickness=0, bg=COLORS["card"])
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
-        inner = ctk.CTkFrame(canvas, fg_color="transparent")
-        
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
         
         self.pl_vars = []
         for i, entry in enumerate(playlist.entries):
             var = tk.BooleanVar(value=True)
             self.pl_vars.append((entry, var))
             
-            row = tk.Frame(inner, bg=COLORS["card"], pady=4)
-            row.pack(fill='x')
+            # Row for each playlist item
+            row = ctk.CTkFrame(list_frame, fg_color="transparent")
+            row.pack(fill='x', pady=4)
             
+            # Checkbox
             cb = ctk.CTkCheckBox(
-                row, text="", variable=var
+                row, text="", variable=var, width=20, height=20
             )
-            cb.pack(side='left', padx=8)
+            cb.pack(side='left', padx=(0, 12))
             
-            ctk.CTkLabel(
-                row, text=f"{i+1}. {entry.title}", font=("Segoe UI", 11)
-            ).pack(side='left', padx=8)
+            # Title
+            title_label = ctk.CTkLabel(
+                row, text=f"{i+1}. {entry.title}", 
+                font=self.font_body, text_color=self.text_main,
+                anchor='w'
+            )
+            title_label.pack(side='left', fill='x', expand=True, padx=(0, 12))
             
-            ctk.CTkLabel(
-                row, text=format_duration(entry.duration), font=("Segoe UI", 10)
-            ).pack(side='right', padx=8)
+            # Duration
+            duration_label = ctk.CTkLabel(
+                row, text=format_duration(entry.duration), 
+                font=self.font_small, text_color=self.text_secondary
+            )
+            duration_label.pack(side='right')
         
-        # Download button
+        # Download button at bottom
         download_btn = ctk.CTkButton(
-            self.results_view, text="Download Selected", command=self.process_playlist
+            container, text="Download Selected", command=self.process_playlist,
+            font=self.font_h2, fg_color=self.accent_blue, hover_color="#0d6bc4",
+            height=56, corner_radius=12
         )
-        download_btn.pack(pady=16)
+        download_btn.pack(pady=(0, 16))
 
     def _load_result_thumb(self, url: str):
         """Load result thumbnail."""
@@ -908,25 +1656,20 @@ class VidFetchApp(ctk.CTk):
             resp.raise_for_status()
             
             pil_img = Image.open(BytesIO(resp.content))
-            # Resize to fit container (aspect-video ratio ~16:9, max 400x225)
-            # Calculate proper aspect ratio
-            max_width, max_height = 400, 225
-            img_width, img_height = pil_img.size
-            ratio = min(max_width / img_width, max_height / img_height)
-            new_size = (int(img_width * ratio), int(img_height * ratio))
-            pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+            # Resize to fit container (320x180 for video card)
+            thumb_width, thumb_height = 320, 180
+            pil_img = pil_img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
             
             # Use CTkImage for CustomTkinter
-            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=new_size)
+            ctk_img = CTkImage(light_image=pil_img, dark_image=pil_img, size=(thumb_width, thumb_height))
             
-            # Update UI in main thread - CRITICAL: keep reference as instance variable
+            # Update UI in main thread
             def update_thumb(img=ctk_img):
                 try:
                     if hasattr(self, 'result_thumb') and self.result_thumb.winfo_exists():
                         self.result_thumb.configure(image=img, text="")
-                        # Store reference as instance variable to prevent garbage collection
                         self.result_thumb.image = img
-                        logging.info(f"Thumbnail loaded successfully: {new_size[0]}x{new_size[1]}")
+                        logging.info(f"Thumbnail loaded successfully: {thumb_width}x{thumb_height}")
                 except Exception as e:
                     logging.error(f"Error updating thumbnail: {e}", exc_info=True)
             
@@ -935,11 +1678,14 @@ class VidFetchApp(ctk.CTk):
             import logging
             logging.error(f"Error loading thumbnail: {e}", exc_info=True)
             # Show placeholder on error
-            self.after(0, lambda: self.result_thumb.configure(
-                text="📹\nNo thumbnail", 
-                text_color="white", 
-                font=("Segoe UI", 16)
-            ))
+            def show_error():
+                if hasattr(self, 'result_thumb') and self.result_thumb.winfo_exists():
+                    self.result_thumb.configure(
+                        text="📹\nNo thumbnail", 
+                        text_color="white", 
+                        font=self.font_body
+                    )
+            self.after(0, show_error)
 
     def add_single(self):
         """Add single video to download queue."""
@@ -952,6 +1698,7 @@ class VidFetchApp(ctk.CTk):
                 return
             
             val = self.quality_var.get()
+            
             if not val:
                 return
             
@@ -984,16 +1731,17 @@ class VidFetchApp(ctk.CTk):
             filename = f"{safe_title}_{fmt.resolution}.{fmt.ext}"
             save_path = self.config.download_path / filename
             
-            item = DownloadItem(
-                self.downloads_container, self.current_metadata.title, fmt.url,
+            # Create DownloadTask
+            task = DownloadTask(
+                self.current_metadata.title, fmt.url,
                 best_audio.url if best_audio else None, save_path,
                 thumb_url=self.current_metadata.thumbnail_url,
                 headers=fmt.http_headers
             )
-            item.start()
-            self.download_items.append(item)
+            self.download_tasks.append(task)
+            task.start()
             
-            # Switch to downloads view
+            # Switch to downloads view to show the item
             self.show_view("downloads")
         except Exception as e:
             import logging
@@ -1046,56 +1794,41 @@ class VidFetchApp(ctk.CTk):
         fname = "".join([c for c in fname if c.isalnum() or c in (' ', '-', '_', '.')])
         save_path = self.config.download_path / fname
         
-        item = DownloadItem(
-            self.downloads_container, meta.title, best.url,
-            best_audio.url if best_audio else None, save_path,
-            thumb_url=meta.thumbnail_url, headers=best.http_headers
+        # Create DownloadTask
+        task = DownloadTask(
+             meta.title, best.url,
+             best_audio.url if best_audio else None, save_path,
+             thumb_url=meta.thumbnail_url, headers=best.http_headers
         )
-        item.start()
-        self.download_items.append(item)
-        self.update_downloads_display()
+        self.download_tasks.append(task)
+        task.start()
+        
+        # Switch to downloads view is handled by caller usually or implicit?
+        # In process_playlist, we call show_view("downloads") after starting batch.
+        # But _auto_add is called via after() from thread. So we should switch if it's the first one?
+        # Actually existing code called show_view("downloads") in process_playlist, not _auto_add.
+        # But _auto_add had lines to switch.
+        
+        # Switch to downloads view
+        self.show_view("downloads")
 
     def update_downloads_display(self):
         """Update downloads count display."""
-        count = len([item for item in self.download_items if item.winfo_exists()])
-        self.downloads_count_label.configure(text=f"({count})")
-        self.downloads_canvas.update_idletasks()
+        # This is now handled by view reconstruction or can be used for sidebar count
+        pass
 
     def pause_all_downloads(self):
         """Pause all active downloads."""
-        for item in self.download_items:
-            if item.winfo_exists() and hasattr(item, 'toggle_pause'):
-                if not item.is_paused:
-                    item.toggle_pause()
+        for task in self.download_tasks:
+            if not task.is_paused:
+                task.toggle_pause()
+                
+        # Refresh view if visible
+        if self.current_view == "downloads":
+            pass # tasks auto-update widgets via observers
 
     def resume_all_downloads(self):
         """Resume all paused downloads."""
-        for item in self.download_items:
-            if item.winfo_exists() and hasattr(item, 'toggle_pause'):
-                if item.is_paused:
-                    item.toggle_pause()
-
-    def open_settings(self):
-        """Open settings modal."""
-        self.settings_modal.deiconify()
-        self.settings_modal.lift()
-        self.settings_modal.grab_set()  # Set grab when showing
-        self.settings_modal.focus()
-
-    def close_settings(self):
-        """Close settings modal."""
-        self.settings_modal.grab_release()  # Release grab before hiding
-        self.settings_modal.withdraw()
-
-    def browse_download_path(self):
-        """Browse for download path."""
-        d = filedialog.askdirectory()
-        if d:
-            self.path_var.set(d)
-
-    def save_settings(self):
-        """Save settings."""
-        path = self.path_var.get()
-        if path:
-            self.config.set_download_path(path)
-        self.close_settings()
+        for task in self.download_tasks:
+            if task.is_paused:
+                task.toggle_pause()

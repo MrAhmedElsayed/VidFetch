@@ -45,4 +45,22 @@ class Config:
         """Set the download path."""
         self.data["download_path"] = str(path)
         self.save()
-
+    
+    def get_history(self) -> list:
+        """Get download history."""
+        return self.data.get("history", [])
+    
+    def add_to_history(self, item: dict):
+        """Add an item to download history."""
+        if "history" not in self.data:
+            self.data["history"] = []
+        # Add to beginning of list
+        self.data["history"].insert(0, item)
+        # Keep only last 50 items
+        self.data["history"] = self.data["history"][:50]
+        self.save()
+    
+    def clear_history(self):
+        """Clear download history."""
+        self.data["history"] = []
+        self.save()
