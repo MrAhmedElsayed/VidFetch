@@ -1,174 +1,155 @@
 # VidFetch
 
-A modern, cross-platform YouTube video downloader with a beautiful GUI built using CustomTkinter. Download videos and playlists in various formats and quality options with an intuitive interface.
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/yourusername/vidfetch)
+[![Python](https://img.shields.io/badge/python-3.12+-green)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-orange)](LICENSE)
 
-![VidFetch](https://img.shields.io/badge/version-0.1.0-blue)
-![Python](https://img.shields.io/badge/python-3.12+-green)
-![License](https://img.shields.io/badge/license-MIT-orange)
+VidFetch is a sophisticated, cross-platform application designed for the efficient downloading of YouTube videos and playlists. Engineered with a focus on user experience and performance, VidFetch leverages a modern GUI built on CustomTkinter to provide a seamless interaction model. It supports a wide array of formats and quality resolutions, ensuring versatility for all user requirements.
 
-## ✨ Features
+## 📋 Table of Contents
 
-- 🎥 **Single Video Downloads** - Download individual YouTube videos in your preferred format and quality
-- 📚 **Playlist Support** - Download entire playlists with selective video selection
-- 🎨 **Modern UI** - Beautiful, dark-themed interface built with CustomTkinter
-- 📊 **Multiple Formats** - Support for MP4, WebM, and MKV formats
-- 🎯 **Quality Selection** - Choose from available resolutions (360p, 720p, 1080p, etc.)
-- 📥 **Smart Downloading** - Robust multi-threaded downloads with progress tracking
-- 🔄 **Audio/Video Muxing** - Automatic merging of separate video and audio streams using FFmpeg
-- 📋 **Download Management** - Track and manage multiple downloads simultaneously
-- 🖼️ **Thumbnail Preview** - View video thumbnails before downloading
-- ⚡ **Fast & Reliable** - Optimized download engine with retry logic and error handling
+- [Key Features](#-key-features)
+- [System Requirements](#-system-requirements)
+- [Installation Guide](#-installation-guide)
+- [Operational Usage](#-operational-usage)
+- [Technical Architecture](#-technical-architecture)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Disclaimer](#-disclaimer)
 
-## 🖼️ Screenshots
+## ✨ Key Features
 
-*Screenshots coming soon*
+- **High-Fidelity Downloads**: download individual videos in customizable formats (MP4, WebM, MKV) and resolutions ranging from 360p to 4K.
+- **Playlist Management**: Comprehensive support for downloading entire playlists with selective filtering capabilities.
+- **Modern User Interface**: A polished, dark-themed interface developed using CustomTkinter, prioritizing accessibility and aesthetic appeal.
+- **Intelligent Processing**: Robust multi-threaded download engine with built-in retry logic, progress tracking, and error handling.
+- **Media Muxing**: seamless integration with FFmpeg for automatic merging of high-quality video and audio streams.
+- **Download Management**: specialized tab for monitoring multiple concurrent downloads with real-time status updates.
+- **Visual Previews**: integrated thumbnail viewer for immediate content verification prior to download.
 
-## 🚀 Installation
+## 💻 System Requirements
 
-### Prerequisites
+To ensure optimal performance, the following prerequisites must be met:
 
-- Python 3.12 or higher
-- [FFmpeg](https://ffmpeg.org/download.html) (required for video/audio muxing)
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- **Operating System**: Windows 10/11, macOS 11+, or modern Linux distributions.
+- **Python**: Version 3.12 or higher.
+- **External Dependencies**:
+    - [FFmpeg](https://ffmpeg.org/download.html) (Essential for video/audio muxing).
 
-### Install FFmpeg
+## 🚀 Installation Guide
 
-**Windows:**
-- Download from [FFmpeg website](https://ffmpeg.org/download.html)
-- Add FFmpeg to your system PATH
+### 1. Install FFmpeg
 
-**macOS:**
-```bash
-brew install ffmpeg
-```
+VidFetch requires FFmpeg for processing media files. Please install it based on your operating system:
 
-**Linux:**
-```bash
-sudo apt-get install ffmpeg  # Debian/Ubuntu
-sudo yum install ffmpeg      # CentOS/RHEL
-```
+*   **Windows**: Download from the [official website](https://ffmpeg.org/download.html) and add to system PATH.
+*   **macOS**:
+    ```bash
+    brew install ffmpeg
+    ```
+*   **Linux (Debian/Ubuntu)**:
+    ```bash
+    sudo apt-get install ffmpeg
+    ```
 
-### Install VidFetch
+### 2. Install VidFetch
 
-**Using uv (recommended):**
+We recommend using `uv` for dependency management, though `pip` is fully supported.
+
+#### Option A: Using `uv` (Recommended)
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/vidfetch.git
 cd vidfetch
 
-# Install dependencies
+# Sync dependencies
 uv sync
 
-# Run the application
+# Launch application
 uv run python -m src.vidfetch.app
 ```
 
-**Using pip:**
+#### Option B: Using `pip`
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/vidfetch.git
 cd vidfetch
 
-# Install dependencies
+# Install in editable mode
 pip install -e .
 
-# Run the application
+# Launch application
 python -m src.vidfetch.app
 ```
 
-## 📖 Usage
+## 📖 Operational Usage
 
-1. **Launch VidFetch** - Start the application
-2. **Paste URL** - Enter a YouTube video or playlist URL in the search bar
-3. **Select Quality** - Choose your preferred format and quality from the available options
-4. **Download** - Click the download button and select your save location
-5. **Monitor Progress** - Track your downloads in the Downloads tab
+1.  **Initialization**: Launch the application via the command line interface.
+2.  **Input Configuration**: Navigate to the "Home" tab and input a valid YouTube URL (Video or Playlist).
+3.  **Parameter Selection**: Select the desired file format (e.g., MP4) and resolution quality from the dropdown menus.
+4.  **Execution**: Initiate the process by clicking the "Download" button. You will be prompted to select a destination directory.
+5.  **Monitoring**: Switch to the "Downloads" tab to view real-time progress, speed, and completion status.
 
 ### Supported URL Formats
 
-- Single video: `https://www.youtube.com/watch?v=VIDEO_ID`
-- Playlist: `https://www.youtube.com/playlist?list=PLAYLIST_ID`
-- Short URL: `https://youtu.be/VIDEO_ID`
+*   **Standard Video**: `https://www.youtube.com/watch?v=VIDEO_ID`
+*   **Playlist**: `https://www.youtube.com/playlist?list=PLAYLIST_ID`
+*   **Shortened**: `https://youtu.be/VIDEO_ID`
 
 ## 🛠️ Building Executable
 
-Build a standalone executable for Windows:
+To generate a standalone executable for distribution, utilize the provided build scripts:
 
 ```bash
-# Using the build script
+# Automated build script
 python scripts/build_exe.py
 
-# Or manually with PyInstaller
+# Manual PyInstaller command
 pyinstaller --onefile --windowed --icon=assets/logo.ico --name=vidfetch main.py
 ```
+*The output artifact will be located in the `build/dist/` directory.*
 
-The executable will be created in the `build/dist/` directory.
+## 🏗️ Technical Architecture
 
-## 🏗️ Project Structure
+VidFetch is structured to promote modularity and maintainability:
 
-```
+```text
 vidfetch/
-├── src/
-│   └── vidfetch/
-│       ├── core/           # Core functionality
-│       │   ├── downloader.py    # Smart downloader with multi-threading
-│       │   ├── muxer.py         # FFmpeg video/audio muxing
-│       │   ├── youtube_client.py # YouTube metadata extraction
-│       │   └── models.py        # Data models
-│       ├── ui/             # User interface
-│       │   ├── main_window.py   # Main application window
-│       │   ├── download_item.py # Download item component
-│       │   └── components.py    # UI components
-│       ├── utils/          # Utilities
-│       │   ├── config.py        # Configuration management
-│       │   ├── paths.py         # Path utilities
-│       │   └── logging.py       # Logging setup
-│       └── app.py          # Application entry point
-├── assets/                 # Application assets
-├── scripts/                # Build and utility scripts
-└── tests/                  # Test files
+├── src/vidfetch/
+│   ├── core/           # Business logic: Downloader, Muxer, YouTube Client
+│   ├── ui/             # Presentation layer: MainWindow, Components
+│   └── utils/          # Shared utilities: Config, Logging, Paths
+├── assets/             # Static resources
+└── scripts/            # DevOps and build automation
 ```
 
-## 🧪 Technologies
+### Technical Stack
 
-- **CustomTkinter** - Modern, customizable Tkinter widgets
-- **yt-dlp** - YouTube video metadata and URL extraction
-- **FFmpeg** - Video/audio processing and muxing
-- **Pillow (PIL)** - Image processing for thumbnails
-- **requests** - HTTP library for downloads
-- **Python 3.12+** - Modern Python features
-
-## 🐛 Known Issues
-
-- MP4 downloads may require special handling for YouTube URLs (single-threaded downloads)
-- Some videos may not have all quality options available
-- Playlist downloads may take longer for large playlists
+-   **GUI Framework**: [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter)
+-   **Core Engine**: [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+-   **Media Processing**: FFmpeg
+-   **Network**: requests
+-   **Image Processing**: Pillow
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+We welcome contributions from the community. To contribute:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1.  Fork the project.
+2.  Create a feature branch (`git checkout -b feature/NewFeature`).
+3.  Commit your changes (`git commit -m 'Implement NewFeature'`).
+4.  Push to the branch (`git push origin feature/NewFeature`).
+5.  Open a Pull Request.
+
+Please ensure all new code adheres to the project's coding standards and includes appropriate tests.
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for full details.
 
-## 🙏 Acknowledgments
+## ⚠️ Disclaimer
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - For YouTube video extraction
-- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) - For the beautiful UI framework
-- [FFmpeg](https://ffmpeg.org/) - For video/audio processing
-
-## 📧 Contact
-
-For issues, questions, or suggestions, please open an issue on GitHub.
-
----
-
-**Note:** This project is for educational purposes. Please respect YouTube's Terms of Service and copyright laws when downloading content.
+This application is intended for educational and personal archiving purposes only. Users are responsible for complying with YouTube's Terms of Service and applicable copyright laws in their jurisdiction. The developers of VidFetch assume no liability for misuse of this software.
 
