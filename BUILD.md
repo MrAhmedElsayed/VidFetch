@@ -147,3 +147,6 @@ Once the minimal build works:
 2. Test on clean Windows machines
 3. Set up CI/CD for automated builds
 4. Consider code signing for distribution
+
+
+# published 
